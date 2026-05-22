@@ -100,6 +100,19 @@ namespace MasselGUARD
                 RebuildLog();
             });
 
+            // Theme change: rebuild tunnel list so colours/badges/status render correctly,
+            // also rebuild group tabs for contrast recalculation
+            ThemeManager.Instance.ThemeChanged += (_, _) => Dispatcher.BeginInvoke(() =>
+            {
+                _vm.RebuildTunnelList();
+                RebuildTunnelGroups();
+                RefreshWifiRulesPanel();
+                UpdateStatusBarCentre();
+                UpdateFooterLabel();
+                NotifyAllBadges();
+                ApplyGroupFilter();
+            });
+
             // Theme: sync auto-theme on startup
             if (ConfigSvc.Config.AutoTheme)
             {
@@ -361,6 +374,30 @@ namespace MasselGUARD
                 }
 
                 bool hideCount = ConfigSvc.Config.AlwaysHideTunnelCount;
+
+                // For tabs without a custom colour, compute contrast against the window background
+                // so text is always readable in both dark and light themes
+                if (tabFg == null)
+                {
+                    try
+                    {
+                        var winBg = FindResource("WindowBg") as SolidColorBrush;
+                        if (winBg != null)
+                        {
+                            var c = winBg.Color;
+                            double Linearise2(double v) => v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+                            double L = 0.2126 * Linearise2(c.R / 255.0)
+                                     + 0.7152 * Linearise2(c.G / 255.0)
+                                     + 0.0722 * Linearise2(c.B / 255.0);
+                            // In light themes (L > 0.4), use dark text; in dark themes, use themed text
+                            if (L > 0.4)
+                                tabFg = active
+                                    ? (Brush)FindResource("Accent")
+                                    : new SolidColorBrush(Color.FromRgb(30, 30, 30));
+                        }
+                    }
+                    catch { }
+                }
                 var btn = new Button
                 {
                     Content         = hideCount ? label : $"{label}  {count}",

@@ -286,7 +286,8 @@ namespace MasselGUARD
         }
 
         private Views.ToastWindow? _activeToast;
-        private string _lastToastKey = "";
+        private string _lastToastKey    = "";
+        private int    _lastActiveCount = 0;  // preserved across theme changes
 
         public void ShowTrayNotification(Views.ToastNotification n)
         {
@@ -332,6 +333,7 @@ namespace MasselGUARD
         public void UpdateTrayStatus(string tunnelName, int activeCount)
         {
             if (_trayIcon == null) return;
+            _lastActiveCount = activeCount;   // remember for theme-change redraws
             var appName = ThemeManager.Instance.Current.AppName;
             _trayIcon.Text = activeCount > 0 ? Lang.T("TrayActive", tunnelName) : appName;
             _trayIcon.Icon = GetTrayIcon(activeCount);
@@ -353,8 +355,11 @@ namespace MasselGUARD
         private void OnThemeChanged(object? sender, EventArgs e)
         {
             if (_trayIcon == null) return;
-            _trayIcon.Text = ThemeManager.Instance.Current.AppName;
-            _trayIcon.Icon = GetTrayIcon(0);
+            // Redraw icon and menu with current active-count so state is preserved
+            _trayIcon.Icon = GetTrayIcon(_lastActiveCount);
+            if (_tunnelMenuHeader != null)
+                _tunnelMenuHeader.Image = DrawMenuIcon(
+                    _lastActiveCount > 0 ? MenuIconKind.ShieldOn : MenuIconKind.ShieldOff);
             ApplyTrayMenuTheme();
         }
 

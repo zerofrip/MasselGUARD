@@ -89,7 +89,7 @@ namespace MasselGUARD.Views
             if (tab == "Advanced")   { RefreshInstallState(); RefreshDllStatus(); RefreshWireGuardSection(); ScanOrphans(); PopulateLogLevelPicker(); SyncStartWithWindows(); }
             if (tab == "About")      RefreshUpdateState();
             if (tab == "Appearance") PopulateThemePicker();
-            if (tab == "General")    RefreshGroupList();
+            if (tab == "General")    { RefreshGroupList(); RefreshModeStatusBox(); }
             if (tab == "Groups")     RefreshGroupList();
             if (tab == "Rules" || tab == "DefaultAction") RefreshAutomationControls();
         }
@@ -114,6 +114,44 @@ namespace MasselGUARD.Views
             if (ModeStandalone?.IsChecked == true) _vm.Mode = AppMode.Standalone;
             else if (ModeCompanion?.IsChecked == true) _vm.Mode = AppMode.Companion;
             else _vm.Mode = AppMode.Mixed;
+            RefreshModeStatusBox();
+        }
+
+        private void RefreshModeStatusBox()
+        {
+            if (DllStatusLabel == null) return;
+            var mode    = _vm.Mode;
+            var baseDir = AppContext.BaseDirectory;
+            var lines   = new System.Text.StringBuilder();
+
+            // ── DLLs (Standalone / Mixed) ─────────────────────────────────────
+            if (mode == AppMode.Standalone || mode == AppMode.Mixed)
+            {
+                var tunnelPath = System.IO.Path.Combine(baseDir, "tunnel.dll");
+                var wgPath     = System.IO.Path.Combine(baseDir, "wireguard.dll");
+
+                bool tunnelOk  = System.IO.File.Exists(tunnelPath);
+                bool wgOk      = System.IO.File.Exists(wgPath);
+
+                lines.AppendLine(tunnelOk
+                    ? $"✓  tunnel.dll      ({new System.IO.FileInfo(tunnelPath).Length / 1024} KB)"
+                    : "✗  tunnel.dll      — not found");
+                lines.AppendLine(wgOk
+                    ? $"✓  wireguard.dll  ({new System.IO.FileInfo(wgPath).Length / 1024} KB)"
+                    : "✗  wireguard.dll  — not found");
+            }
+
+            // ── WireGuard for Windows (Companion / Mixed) ─────────────────────
+            if (mode == AppMode.Companion || mode == AppMode.Mixed)
+            {
+                var wgInstall = MainWindow.DetectWireGuardInstallDir();
+                if (wgInstall != null)
+                    lines.AppendLine($"✓  WireGuard for Windows  ({wgInstall})");
+                else
+                    lines.AppendLine("✗  WireGuard for Windows  — not found");
+            }
+
+            DllStatusLabel.Text = lines.ToString().TrimEnd();
         }
 
         private void RefreshGroupList()
