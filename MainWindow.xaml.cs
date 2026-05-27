@@ -2321,17 +2321,25 @@ namespace MasselGUARD
             {
                 var latest = await UpdateChecker.CheckNowAsync(ConfigSvc.Config, ConfigSvc.Save);
                 if (latest == null) return;
-
                 if (!UpdateChecker.IsNewerVersion(latest.TagName)) return;
 
+                // Ask on the UI thread, then start the download on a background thread.
+                var shouldUpdate = false;
                 await Dispatcher.InvokeAsync(() =>
                 {
                     var current = UpdateChecker.CurrentVersionString;
-                    if (ShowThemedYesNo(
+                    shouldUpdate = ShowThemedYesNo(
                         Lang.T("UpdateAvailableMsg", latest.TagName, current),
-                        Lang.T("UpdateAvailableTitle")))
-                        RunUpdate();
+                        Lang.T("UpdateAvailableTitle"));
                 });
+
+                if (shouldUpdate)
+                {
+                    var progress = new System.Progress<string>(
+                        msg => LogSvc.Info($"[Update] {msg}"));
+                    await UpdateChecker.UpdateAsync(
+                        latest, progress, ConfigSvc.Config, ConfigSvc.Save);
+                }
             }
             catch { /* silent — network may not be available */ }
         }
@@ -2721,19 +2729,10 @@ namespace MasselGUARD
                 StringComparison.OrdinalIgnoreCase);
         }
 
-        public void RunUpdate()
-        {
-            var installed = GetInstalledPath();
-            if (installed == null) return;
-            try
-            {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-                    installed) { UseShellExecute = true });
-                App.IsShuttingDown = true;   // suppress teardown exceptions
-                Application.Current.Shutdown();
-            }
-            catch (Exception ex) { LogSvc.Warn($"Update failed: {ex.Message}"); }
-        }
+        // RunUpdate() is superseded by UpdateChecker.UpdateAsync().
+        // Kept as a no-op to avoid compilation errors if any dead code still references it.
+        [System.Obsolete("Use UpdateChecker.UpdateAsync() instead.")]
+        public void RunUpdate() => LogSvc.Warn("RunUpdate() called — use UpdateChecker.UpdateAsync().");
 
         public (MessageBoxResult result, bool suppress) ShowUpdatePrompt(string msg, string title)
         {

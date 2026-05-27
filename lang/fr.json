@@ -106,6 +106,8 @@
   "UpdateDownloading": "Downloading v{0}…",
   "UpdateExtracting": "Extracting…",
   "UpdateApplying": "Applying update…",
+  "UpdateFailed": "Échec de la mise à jour. Veuillez télécharger manuellement depuis github.com/masselink/MasselGUARD.",
+  "UpdateNoZipAsset": "La version {0} ne contient pas de fichier MasselGUARD.zip. Veuillez télécharger manuellement depuis github.com/masselink/MasselGUARD.",
   "TunnelColType": "Type",
   "TunnelWireGuardNotInstalled": "WireGuard is not installed",
   "BtnSelectAll": "Select all",

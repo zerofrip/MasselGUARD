@@ -1472,6 +1472,7 @@ namespace MasselGUARD.Views
                 CheckUpdateBtn.IsEnabled = true;
                 CheckUpdateBtn.Content   = Lang.T("BtnCheckUpdate");
             }
+            _latestRelease            = latest;
             _updateCheckedThisSession = true;
             RefreshUpdateState();
             if (latest != null && UpdateChecker.IsNewerVersion(latest.TagName))
@@ -1480,7 +1481,7 @@ namespace MasselGUARD.Views
                 if (_main.ShowThemedYesNo(
                     Lang.T("UpdateAvailableMsg", latest.TagName, current),
                     Lang.T("UpdateAvailableTitle")))
-                    _main.RunUpdate();
+                    await StartUpdateAsync(latest);
             }
             else if (latest != null && UpdateChecker.IsAheadOfLatest(latest.TagName))
             {
@@ -1489,6 +1490,55 @@ namespace MasselGUARD.Views
                     Lang.T("SettingsUpdateAheadTitle"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
+            }
+        }
+
+        // Downloads, extracts, and applies the update, then shuts down this instance.
+        // Shows inline progress and re-enables buttons on failure.
+        private async System.Threading.Tasks.Task StartUpdateAsync(ReleaseInfo release)
+        {
+            if (release.ZipUrl == null)
+            {
+                MessageBox.Show(
+                    Lang.T("UpdateNoZipAsset", release.TagName),
+                    "MasselGUARD",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (CheckUpdateBtn != null)  CheckUpdateBtn.IsEnabled = false;
+            if (DoUpdateBtn    != null)  DoUpdateBtn.IsEnabled    = false;
+            if (UpdateProgressLabel != null)
+            {
+                UpdateProgressLabel.Text       = "";
+                UpdateProgressLabel.Visibility = Visibility.Visible;
+            }
+
+            var progress = new Progress<string>(msg =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    if (UpdateProgressLabel != null) UpdateProgressLabel.Text = msg;
+                });
+            });
+
+            try
+            {
+                await UpdateChecker.UpdateAsync(
+                    release, progress, _main.ConfigSvc.Config, _main.ConfigSvc.Save);
+                // UpdateAsync calls ShutdownApp() on success — execution never reaches here.
+            }
+            catch (Exception ex)
+            {
+                if (UpdateProgressLabel != null) UpdateProgressLabel.Visibility = Visibility.Collapsed;
+                if (CheckUpdateBtn != null)  CheckUpdateBtn.IsEnabled = true;
+                if (DoUpdateBtn    != null)  DoUpdateBtn.IsEnabled    = true;
+                MessageBox.Show(
+                    $"{Lang.T("UpdateFailed")}\n\n{ex.Message}",
+                    "MasselGUARD",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
             }
         }
 
@@ -1555,8 +1605,11 @@ namespace MasselGUARD.Views
         private void ScanOrphans_Click(object sender, System.Windows.RoutedEventArgs e)
             => ScanOrphans();
 
-        private void DoUpdate_Click(object sender, System.Windows.RoutedEventArgs e)
-            => _main.RunUpdate();
+        private async void DoUpdate_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_latestRelease != null)
+                await StartUpdateAsync(_latestRelease);
+        }
 
         private void GithubLink_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
@@ -1565,9 +1618,10 @@ namespace MasselGUARD.Views
             catch { }
         }
 
-        private bool _fontPickerPopulated      = false;
-        private bool _savedSuccessfully        = false;
-        private bool _updateCheckedThisSession = false;  // Download button only visible after manual check
+        private bool         _fontPickerPopulated      = false;
+        private bool         _savedSuccessfully        = false;
+        private bool         _updateCheckedThisSession = false;  // Download button only visible after manual check
+        private ReleaseInfo? _latestRelease;                     // Cached from last CheckNow — needed by DoUpdate button
 
         // ── Font live-preview timer ───────────────────────────────────────────
         private System.Windows.Threading.DispatcherTimer? _fontPreviewTimer;
