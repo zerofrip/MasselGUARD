@@ -1,4 +1,28 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  v3.2.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+About tab — What's New panel
+  • Release notes fetched live from the GitHub repository and
+    displayed inline in Settings → About — no browser needed.
+  • Offline fallback shows a styled panel with clickable links
+    to GitHub and masselink.net.
+  • About tab reorganised into named sections: UPDATES,
+    MASSELGUARD, WHAT'S NEW.
+
+WiFi rule edit dialog
+  • The Edit Rule dialog now shows the rule's hit counter.
+  • (Re)set counter button opens a small input dialog — type a
+    number to set, type 0 to clear. Cancel makes no change.
+  • Counter changes are recorded in the activity log:
+      Counter: 42 → 10
+
+Window close
+  • X button (or Alt+F4) hides the window to the tray as before.
+  • Shift+X performs a clean exit — same as Tray → Exit.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   v3.1.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

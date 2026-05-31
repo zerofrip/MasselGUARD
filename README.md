@@ -96,12 +96,12 @@ MasselGUARD sits in the system tray and watches your WiFi connection. When you j
 BUILD.bat
 ```
 
-Generates build number (`3.1.0.YYMMDDHHMM`), injects into `UpdateChecker.cs`, compiles, copies output to `dist\`.
+Generates build number (`3.2.0.YYMMDDHHMM`), injects into `UpdateChecker.cs`, compiles, copies output to `dist\`.
 
 Banner:
 ```
   ----------------------------------------
-    MasselGUARD  v3.1.0.YYMMDDHHMM
+    MasselGUARD  v3.2.0.YYMMDDHHMM
     Harold Masselink  |  Claude.ai
   ----------------------------------------
 ```

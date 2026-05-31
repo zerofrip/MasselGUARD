@@ -272,10 +272,9 @@
                                     <Grid Margin="8,5">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="3*"/>
-                                            <ColumnDefinition Width="1.2*"/>
-                                            <ColumnDefinition Width="1.8*"/>
+                                            <ColumnDefinition Width="2.8*"/>
                                             <ColumnDefinition Width="Auto" MinWidth="0"/>
-                                            <ColumnDefinition Width="1.4*"/>
+                                            <ColumnDefinition Width="1.5*"/>
                                         </Grid.ColumnDefinitions>
                                         <Button Grid.Column="0" Style="{StaticResource SortHeaderBtn}" Click="TunSort_Name">
                                             <StackPanel Orientation="Horizontal">
@@ -283,19 +282,13 @@
                                                 <TextBlock x:Name="TunArrowName" Text="" FontSize="9" Foreground="{DynamicResource Accent}" Margin="2,0,0,0"/>
                                             </StackPanel>
                                         </Button>
-                                        <Button Grid.Column="1" Style="{StaticResource SortHeaderBtn}" Click="TunSort_Type">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding [TunnelColType], Source={x:Static local:Lang.Instance}}" FontSize="10"/>
-                                                <TextBlock x:Name="TunArrowType" Text="" FontSize="9" Foreground="{DynamicResource Accent}" Margin="2,0,0,0"/>
-                                            </StackPanel>
-                                        </Button>
-                                        <Button Grid.Column="2" Style="{StaticResource SortHeaderBtn}" Click="TunSort_Status">
+                                        <Button Grid.Column="1" Style="{StaticResource SortHeaderBtn}" Click="TunSort_Status">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding [TunnelColStatus], Source={x:Static local:Lang.Instance}}" FontSize="10"/>
                                                 <TextBlock x:Name="TunArrowStatus" Text="" FontSize="9" Foreground="{DynamicResource Accent}" Margin="2,0,0,0"/>
                                             </StackPanel>
                                         </Button>
-                                        <Button Grid.Column="3" x:Name="RulesColHeader"
+                                        <Button Grid.Column="2" x:Name="RulesColHeader"
                                                 Style="{StaticResource SortHeaderBtn}" Click="TunSort_Rules"
                                                 Padding="8,0"
                                                 Visibility="{Binding DataContext.RulesColumnVisibility, RelativeSource={RelativeSource AncestorType=Window}}">
@@ -304,7 +297,7 @@
                                                 <TextBlock x:Name="TunArrowRules" Text="" FontSize="9" Foreground="{DynamicResource Accent}" Margin="2,0,0,0"/>
                                             </StackPanel>
                                         </Button>
-                                        <TextBlock Grid.Column="4" Text="{Binding [TunnelColAction], Source={x:Static local:Lang.Instance}}" FontSize="10" Foreground="{DynamicResource TextMuted}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding [TunnelColAction], Source={x:Static local:Lang.Instance}}" FontSize="10" Foreground="{DynamicResource TextMuted}" HorizontalAlignment="Center"/>
                                     </Grid>
                                 </Border>
 
@@ -353,11 +346,11 @@
                                                 <Grid Grid.Column="1" Margin="6,3,8,3">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="3*"/>
-                                                        <ColumnDefinition Width="1.2*"/>
-                                                        <ColumnDefinition Width="1.5*"/>
+                                                        <ColumnDefinition Width="2.8*"/>
                                                         <ColumnDefinition Width="Auto" MinWidth="0"/>
                                                         <ColumnDefinition Width="1.5*"/>
                                                     </Grid.ColumnDefinitions>
+                                                    <!-- Name + badges -->
                                                     <StackPanel Grid.Column="0"
                                                                 Orientation="Horizontal"
                                                                 VerticalAlignment="Center">
@@ -380,17 +373,38 @@
                                                                    ToolTip="Open network protection tunnel"
                                                                    Visibility="{Binding OpenBadgeVis}"/>
                                                     </StackPanel>
-                                                    <TextBlock Grid.Column="1"
-                                                               Text="{Binding TypeLabel}"
-                                                               Foreground="{Binding TypeColor}"
-                                                               FontSize="{DynamicResource Theme.FontSize.Small}"
-                                                               VerticalAlignment="Center"/>
+                                                    <!-- Status  |  ↑↓ traffic  |  DNS leak (all inline) -->
+                                                    <StackPanel Grid.Column="1"
+                                                                Orientation="Horizontal"
+                                                                VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding StatusText}"
+                                                                   Foreground="{Binding StatusColor}"
+                                                                   FontSize="{DynamicResource Theme.FontSize}"
+                                                                   VerticalAlignment="Center"/>
+                                                        <TextBlock Text="  |  "
+                                                                   Foreground="{DynamicResource TextMuted}"
+                                                                   FontSize="{DynamicResource Theme.FontSize.Small}"
+                                                                   VerticalAlignment="Center"
+                                                                   Visibility="{Binding TrafficVisibility}"/>
+                                                        <TextBlock Text="{Binding TrafficDisplay}"
+                                                                   Foreground="{DynamicResource TextMuted}"
+                                                                   FontSize="{DynamicResource Theme.FontSize.Small}"
+                                                                   VerticalAlignment="Center"
+                                                                   Visibility="{Binding TrafficVisibility}"/>
+                                                        <TextBlock Text="  |  "
+                                                                   Foreground="{DynamicResource TextMuted}"
+                                                                   FontSize="{DynamicResource Theme.FontSize.Small}"
+                                                                   VerticalAlignment="Center"
+                                                                   Visibility="{Binding DnsLeakVisibility}"/>
+                                                        <TextBlock Text="{Binding DnsLeakDisplay}"
+                                                                   Foreground="{Binding DnsLeakColor}"
+                                                                   FontSize="{DynamicResource Theme.FontSize.Small}"
+                                                                   VerticalAlignment="Center"
+                                                                   Visibility="{Binding DnsLeakVisibility}"
+                                                                   ToolTip="{Binding DnsLeakTooltip}"/>
+                                                    </StackPanel>
+                                                    <!-- Rules hit count -->
                                                     <TextBlock Grid.Column="2"
-                                                               Text="{Binding StatusText}"
-                                                               Foreground="{Binding StatusColor}"
-                                                               FontSize="{DynamicResource Theme.FontSize}"
-                                                               VerticalAlignment="Center"/>
-                                                    <TextBlock Grid.Column="3"
                                                                Text="{Binding RuleCount}"
                                                                Foreground="{Binding RuleCountColor}"
                                                                TextDecorations="{Binding RuleCountDecoration}"
@@ -402,7 +416,8 @@
                                                                ToolTip="{Binding RuleCountTooltip}"
                                                                Visibility="{Binding DataContext.RulesColumnVisibility, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                MouseLeftButtonDown="RuleCount_Click"/>
-                                                    <Button Grid.Column="4"
+                                                    <!-- Connect / Disconnect button -->
+                                                    <Button Grid.Column="3"
                                                             Content="{Binding ButtonLabel}"
                                                             IsEnabled="{Binding ButtonEnabled}"
                                                             ToolTip="{Binding ButtonTooltip}"

@@ -46,6 +46,23 @@ namespace MasselGUARD.Models
         public string TunnelDisplay =>
             string.IsNullOrEmpty(_tunnel) ? "\u2014 disconnect" : _tunnel;
 
+        /// <summary>Auto-generated display name: user Name if set, else "SSID \u2192 tunnel/disconnect".</summary>
+        [JsonIgnore]
+        public string RuleName
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(_name)) return _name;
+                var ssid   = string.IsNullOrEmpty(_ssid)   ? "\u2014"          : _ssid;
+                var target = string.IsNullOrEmpty(_tunnel) ? "disconnect" : _tunnel;
+                return $"{ssid} \u2192 {target}";
+            }
+        }
+
+        /// <summary>"Connect" when a tunnel is set; "Disconnect" when the rule disconnects all.</summary>
+        [JsonIgnore]
+        public string ActionLabel => string.IsNullOrEmpty(_tunnel) ? "Disconnect" : "Connect";
+
         /// <summary>Number of times this rule has been triggered. Persisted in config.</summary>
         public int ExecutionCount { get; set; } = 0;
     }

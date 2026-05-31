@@ -27,19 +27,31 @@ namespace MasselGUARD.Services
             AppContext.BaseDirectory, "tunnels");
         private static readonly string TempDir = Path.Combine(TunnelDir, "temp");
 
-        private readonly LogService    _log;
-        private readonly ScriptService _scripts;
-        private readonly System.Collections.Generic.Dictionary<string,DateTime> _connectTimes = new();
+        private readonly LogService         _log;
+        private readonly ScriptService      _scripts;
+        private readonly HistoryService     _history;
+        private readonly KillSwitchService? _ks;
+        private readonly System.Collections.Generic.Dictionary<string, DateTime>      _connectTimes = new();
+        /// <summary>Byte counts snapshotted at connect time, for session-delta reporting on disconnect.</summary>
+        private readonly System.Collections.Generic.Dictionary<string, (long rx, long tx)> _connectBytes = new();
 
-        public TunnelService(LogService log, ScriptService scripts)
+        public TunnelService(LogService log, ScriptService scripts, HistoryService history,
+                             KillSwitchService? killSwitch = null)
         {
             _log     = log;
             _scripts = scripts;
+            _history = history;
+            _ks      = killSwitch;
         }
+
+        private static bool ShouldKillSwitch(StoredTunnel s, AppConfig cfg) =>
+            cfg.KillSwitchMode == "always" || s.KillSwitch;
 
         // ── Connect ───────────────────────────────────────────────────────────
 
-        public bool Connect(StoredTunnel stored, AppConfig cfg)
+        /// <param name="source">Human-readable trigger, e.g. "Manual", "Auto-reconnect",
+        /// "Rule: HomeNet → Work VPN". Stored in connection history.</param>
+        public bool Connect(StoredTunnel stored, AppConfig cfg, string source = "Manual")
         {
             try
             {
@@ -50,7 +62,10 @@ namespace MasselGUARD.Services
                     : ConnectWireGuard(stored, cfg);
 
                 if (ok)
+                {
+                    _history.RecordConnect(stored.Name, source);
                     RunScript(stored.PostConnectScript, "post-connect", stored.Name);
+                }
 
                 return ok;
             }
@@ -92,6 +107,10 @@ namespace MasselGUARD.Services
                 if (ok2)
                 {
                     _log.Ok($"Connected: {stored.Name}");
+                    _connectTimes[stored.Name] = DateTime.UtcNow;
+                    // Snapshot initial bytes so we can compute session totals on disconnect
+                    var s0 = TunnelDll.GetTrafficStats(stored.Name);
+                    _connectBytes[stored.Name] = (s0.RxBytes, s0.TxBytes);
                     // Stamp service so orphan scan can identify it as MasselGUARD-managed
                     try
                     {
@@ -102,6 +121,9 @@ namespace MasselGUARD.Services
                         regKey?.SetValue("DisplayName", $"WireGuard Tunnel: MasselGUARD - {stored.Name}");
                     }
                     catch { /* non-critical */ }
+                    // Enable kill switch after the tunnel adapter is up
+                    if (_ks != null && ShouldKillSwitch(stored, cfg))
+                        _ks.Enable(stored.Name, KillSwitchService.ParseEndpointIp(plaintext));
                     return true;
                 }
                 _log.Warn($"TunnelDll: {err}"); return false;
@@ -129,6 +151,11 @@ namespace MasselGUARD.Services
                     TimeSpan.FromSeconds(15));
                 _log.Ok($"Connected: {stored.Name} (WireGuard)");
                 _connectTimes[stored.Name] = DateTime.UtcNow;
+                var sw0 = TunnelDll.GetTrafficStats(stored.Name);
+                _connectBytes[stored.Name] = (sw0.RxBytes, sw0.TxBytes);
+                // Enable kill switch (no plaintext config available for companion tunnels)
+                if (_ks != null && ShouldKillSwitch(stored, cfg))
+                    _ks.Enable(stored.Name, null);
                 return true;
             }
             catch (Exception ex)
@@ -166,9 +193,12 @@ namespace MasselGUARD.Services
         {
             try
             {
+                // Snapshot bytes BEFORE the adapter is torn down — it disappears on disconnect
+                var finalStats = TunnelDll.GetTrafficStats(stored.Name);
                 TunnelDll.Disconnect(stored.Name, out string disconnErr);
-                LogDisconnect(stored.Name);
+                LogDisconnect(stored.Name, finalStats);
                 if (!string.IsNullOrEmpty(disconnErr)) _log.Warn(disconnErr);
+                _ks?.Disable(stored.Name);
                 return true;
             }
             catch (Exception ex) { _log.Warn($"TunnelDll.Disconnect failed: {ex.Message}"); return false; }
@@ -179,17 +209,27 @@ namespace MasselGUARD.Services
             var svcName = "WireGuardTunnel$" + stored.Name;
             try
             {
+                // Snapshot bytes before stopping the service
+                var finalStats = TunnelDll.GetTrafficStats(stored.Name);
                 using var sc = new ServiceController(svcName);
                 sc.Stop();
                 sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
-                LogDisconnect(stored.Name);
+                LogDisconnect(stored.Name, finalStats);
+                _ks?.Disable(stored.Name);
                 return true;
             }
             catch (Exception ex) { _log.Warn($"WireGuard service stop failed: {ex.Message}"); return false; }
         }
 
-        private void LogDisconnect(string name)
+        private void LogDisconnect(string name,
+            TunnelDll.TunnelStats finalStats = default)
         {
+            _history.RecordDisconnect(name);
+
+            // Always log the basic disconnect message
+            _log.Ok($"Disconnected: {name}");
+
+            // When extended logging is on, add a grey continuation line with duration + bandwidth
             if (_log.IsExtended && _connectTimes.TryGetValue(name, out var connectedAt))
             {
                 var elapsed = DateTime.UtcNow - connectedAt;
@@ -197,13 +237,22 @@ namespace MasselGUARD.Services
                            : elapsed.TotalMinutes < 60  ? $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds:D2}s"
                            : elapsed.TotalHours < 24    ? $"{(int)elapsed.TotalHours}h {elapsed.Minutes:D2}m"
                            : $"{(int)elapsed.TotalDays}d {elapsed.Hours:D2}h {elapsed.Minutes:D2}m";
-                _log.Ok(Lang.T("TunnelDisconnectedAfter", name, dur));
+
+                string detail = dur;
+                if (finalStats.AdapterFound &&
+                    _connectBytes.TryGetValue(name, out var startBytes))
+                {
+                    long sessionTx = Math.Max(0, finalStats.TxBytes - startBytes.tx);
+                    long sessionRx = Math.Max(0, finalStats.RxBytes - startBytes.rx);
+                    detail += $"  |  ↑ {FormatBytes(sessionTx)}  ↓ {FormatBytes(sessionRx)}";
+                }
+
+                // isContinuation = true renders as "  ↳ " in grey (Debug level = TextMuted)
+                _log.Write(LogLevel.Debug, detail, isContinuation: true);
             }
-            else
-            {
-                _log.Ok($"Disconnected: {name}");
-            }
+
             _connectTimes.Remove(name);
+            _connectBytes.Remove(name);
         }
 
         // ── Status ────────────────────────────────────────────────────────────
@@ -254,6 +303,14 @@ namespace MasselGUARD.Services
                 return File.ReadAllText(stored.Path);
             }
             return "";
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            if (bytes < 1024)          return $"{bytes} B";
+            if (bytes < 1_048_576)     return $"{bytes / 1024.0:F1} KB";
+            if (bytes < 1_073_741_824) return $"{bytes / 1_048_576.0:F1} MB";
+            return                             $"{bytes / 1_073_741_824.0:F2} GB";
         }
 
         public static string EncryptConfig(string plaintext)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
@@ -28,6 +29,12 @@ namespace MasselGUARD.ViewModels
         // ── Observable state ──────────────────────────────────────────────────
         public ObservableCollection<TunnelEntryViewModel> TunnelList { get; } = new();
         public ObservableCollection<LogEntryViewModel>    LogEntries { get; } = new();
+
+        // ── Stats polling / auto-reconnect ────────────────────────────────────
+        private int _statusTick = 0;
+        private const int StatsPollEveryTicks = 5; // every 5 seconds
+        private readonly HashSet<string> _reconnecting =
+            new(StringComparer.OrdinalIgnoreCase);
 
         private string? _currentSsid;
         public  string  CurrentSsidDisplay =>
@@ -173,6 +180,12 @@ namespace MasselGUARD.ViewModels
                     .ToDictionary(t => t.Name, t => t.ConnectedAt!.Value,
                                   StringComparer.OrdinalIgnoreCase);
 
+                // Snapshot UserDisconnected flags so auto-reconnect suppression survives rebuilds.
+                var userDisconnected = TunnelList
+                    .Where(t => t.UserDisconnected)
+                    .Select(t => t.Name)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
                 TunnelList.Clear();
                 foreach (var s in _config.Config.Tunnels
                     .Where(t => IsSourceAllowed(t.Source)))
@@ -181,13 +194,15 @@ namespace MasselGUARD.ViewModels
                     TunnelList.Add(vm);
                 }
 
-                // Restore connect-times on tunnels that are still active after rebuild.
-                // RefreshStatus sets IsActive first, so RestoreConnectedAt can check it.
+                // Restore connect-times and UserDisconnected flags on tunnels still active
+                // after rebuild. RefreshStatus sets IsActive first so RestoreConnectedAt works.
                 foreach (var vm in TunnelList)
                 {
                     vm.RefreshStatus();
                     if (connectedAt.TryGetValue(vm.Name, out var t0))
                         vm.RestoreConnectedAt(t0);
+                    if (userDisconnected.Contains(vm.Name))
+                        vm.UserDisconnected = true;
                 }
             });
         }
@@ -203,11 +218,82 @@ namespace MasselGUARD.ViewModels
 
         public void RefreshTunnelStatus()
         {
+            _statusTick++;
+            bool doStatsPoll = (_statusTick % StatsPollEveryTicks == 0);
+
             foreach (var t in TunnelList)
+            {
+                bool wasActive = t.IsActive;
                 t.RefreshStatus();
+                bool nowActive = t.IsActive;
+
+                if (doStatsPoll && nowActive)
+                {
+                    var stats = TunnelDll.GetTrafficStats(t.Name);
+                    t.UpdateStats(stats);
+                    t.UpdateDnsStatus(TunnelDll.CheckDnsLeak(t.Name));
+
+                    // Local tunnel: if the kernel adapter is gone but we still think
+                    // it's connected (IsRunning checks in-memory HashSet only),
+                    // the adapter must have dropped (e.g. after sleep/wake).
+                    if (t.IsLocal && !stats.AdapterFound && !t.UserDisconnected
+                        && _config.Config.AutoReconnect
+                        && t.ConnectedAt.HasValue
+                        && (DateTime.UtcNow - t.ConnectedAt.Value).TotalSeconds > 30)
+                    {
+                        TunnelDll.ForceMarkDisconnected(t.Name);
+                        t.RefreshStatus(); // now shows disconnected
+                        _ = AutoReconnectAsync(t);
+                    }
+                }
+
+                // Companion tunnel: service stopped unexpectedly (SCM is the real check).
+                if (!t.IsLocal && wasActive && !nowActive
+                    && !t.UserDisconnected && _config.Config.AutoReconnect)
+                {
+                    _ = AutoReconnectAsync(t);
+                }
+            }
 
             var active = TunnelList.FirstOrDefault(t => t.IsActive);
             ActiveTunnelName = active?.Name ?? "Not connected";
+        }
+
+        private async System.Threading.Tasks.Task AutoReconnectAsync(TunnelEntryViewModel vm)
+        {
+            // Guard against concurrent reconnect attempts for the same tunnel.
+            lock (_reconnecting)
+            {
+                if (_reconnecting.Contains(vm.Name)) return;
+                _reconnecting.Add(vm.Name);
+            }
+
+            try
+            {
+                _log.Info($"Auto-reconnect: {vm.Name} — tunnel dropped, reconnecting…");
+
+                // Brief pause to let the system settle (network stack, etc.)
+                await System.Threading.Tasks.Task.Delay(2500);
+
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    // Only reconnect if the tunnel is still down and the user hasn't
+                    // manually disconnected in the meantime.
+                    if (vm.IsActive || vm.UserDisconnected) return;
+
+                    vm.PendingConnectSource = "Auto-reconnect";
+                    vm.ConnectCommand.Execute(null);
+
+                    if (vm.IsActive)
+                        _log.Ok($"Auto-reconnect: {vm.Name} ✓");
+                    else
+                        _log.Warn($"Auto-reconnect: {vm.Name} — failed");
+                });
+            }
+            finally
+            {
+                lock (_reconnecting) { _reconnecting.Remove(vm.Name); }
+            }
         }
 
         // ── WiFi ──────────────────────────────────────────────────────────────
@@ -280,7 +366,11 @@ namespace MasselGUARD.ViewModels
                 t.DisconnectCommand.Execute(null);
 
             if (!target.IsActive)
+            {
+                // Tag the connect source so it's recorded correctly in history.
+                target.PendingConnectSource = result.Reason;
                 target.ConnectCommand.Execute(null);
+            }
 
             if (_config.Config.ShowTrayPopupOnSwitch)
             {

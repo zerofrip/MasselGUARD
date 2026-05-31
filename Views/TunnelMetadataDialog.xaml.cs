@@ -15,12 +15,14 @@ namespace MasselGUARD.Views
         public string ResultPostDisconnectScript { get; private set; } = "";
         public bool   ResultIsDefault          { get; private set; }
         public bool   ResultIsOpenProtection   { get; private set; }
+        public bool   ResultKillSwitch         { get; private set; }
 
         public TunnelMetadataDialog(string tunnelName, string currentGroup,
                                     string currentNotes, List<string> groups,
                                     string preConnect = "", string postConnect = "",
                                     string preDisconnect = "", string postDisconnect = "",
-                                    bool isDefault = false, bool isOpenProtection = false)
+                                    bool isDefault = false, bool isOpenProtection = false,
+                                    bool isKillSwitch = false, bool isGlobalAlways = false)
         {
             InitializeComponent();
 
@@ -42,6 +44,19 @@ namespace MasselGUARD.Views
             // Default / open protection toggles
             if (IsDefaultToggle        != null) IsDefaultToggle.IsChecked        = isDefault;
             if (IsOpenProtectionToggle != null) IsOpenProtectionToggle.IsChecked = isOpenProtection;
+
+            // Kill switch toggle
+            if (KillSwitchToggle != null)
+            {
+                KillSwitchToggle.IsChecked = isKillSwitch;
+                if (isGlobalAlways)
+                {
+                    KillSwitchToggle.IsEnabled = false;
+                    KillSwitchToggle.Opacity   = 0.5;
+                    if (KillSwitchToggleLabel != null)
+                        KillSwitchToggleLabel.Text = "🔒 Kill switch  (controlled globally)";
+                }
+            }
         }
 
         private void SaveBtn_Click(object sender, RoutedEventArgs e)
@@ -54,6 +69,7 @@ namespace MasselGUARD.Views
             ResultPostDisconnectScript = PostDisconnectBox.Text.Trim();
             ResultIsDefault           = IsDefaultToggle?.IsChecked        == true;
             ResultIsOpenProtection    = IsOpenProtectionToggle?.IsChecked == true;
+            ResultKillSwitch          = KillSwitchToggle?.IsChecked       == true;
             DialogResult = true;
         }
 
