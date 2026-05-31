@@ -343,21 +343,35 @@
             <!-- Button bar -->
             <Border Grid.Row="3" Background="{DynamicResource Surface}" CornerRadius="{DynamicResource Theme.CornerRadiusBottom}">
                 <Grid Margin="16,10">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left"
-                                VerticalAlignment="Center">
-                        <ToggleButton x:Name="IsDefaultToggle"
-                                      Style="{StaticResource ToggleSwitch}"
-                                      Margin="0,0,6,0"/>
-                        <TextBlock Text="⚡ Default action"
-                                   FontSize="10" Foreground="{DynamicResource TextMuted}"
-                                   VerticalAlignment="Center" Margin="0,0,16,0"/>
-                        <ToggleButton x:Name="IsOpenProtectionToggle"
-                                      Style="{StaticResource ToggleSwitch}"
-                                      Margin="0,0,6,0"/>
-                        <TextBlock Text="🔓 Open network protection"
-                                   FontSize="10" Foreground="{DynamicResource TextMuted}"
-                                   VerticalAlignment="Center"/>
+                    <!-- Left: toggles stacked vertically -->
+                    <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <!-- Row 1: Default + Open network protection -->
+                        <StackPanel Orientation="Horizontal">
+                            <ToggleButton x:Name="IsDefaultToggle"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          Margin="0,0,6,0"/>
+                            <TextBlock Text="⚡ Default action"
+                                       FontSize="10" Foreground="{DynamicResource TextMuted}"
+                                       VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <ToggleButton x:Name="IsOpenProtectionToggle"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          Margin="0,0,6,0"/>
+                            <TextBlock Text="🔓 Open network protection"
+                                       FontSize="10" Foreground="{DynamicResource TextMuted}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <!-- Row 2: Kill switch -->
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <ToggleButton x:Name="KillSwitchToggle"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          Margin="0,0,6,0"/>
+                            <TextBlock x:Name="KillSwitchToggleLabel"
+                                       Text="🔒 Kill switch"
+                                       FontSize="10" Foreground="{DynamicResource TextMuted}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                     </StackPanel>
+                    <!-- Right: Cancel + Save -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                                 VerticalAlignment="Center">
                         <Button Content="{Binding [BtnCancel], Source={x:Static local:Lang.Instance}}"

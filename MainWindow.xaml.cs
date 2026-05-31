@@ -25,6 +25,8 @@ namespace MasselGUARD
         internal readonly TunnelService  TunnelSvc;
         internal readonly RuleEngine     RuleEngine;
         internal readonly ScriptService  ScriptSvc;
+        internal readonly Services.HistoryService     HistorySvc;
+        internal readonly Services.KillSwitchService  KillSwitchSvc;
 
         // ── ViewModel ─────────────────────────────────────────────────────────
         internal readonly MainViewModel _vm;
@@ -107,10 +109,13 @@ namespace MasselGUARD
             LogSvc     = new LogService();
             LogSvc.IsExtended = ConfigSvc.Config.LogLevelSetting == "extended";
 
-            ScriptSvc  = new ScriptService();
-            TunnelSvc  = new TunnelService(LogSvc, ScriptSvc);
-            WifiSvc    = new WiFiService();
-            RuleEngine = new RuleEngine();
+            ScriptSvc      = new ScriptService();
+            HistorySvc     = new Services.HistoryService();
+            HistorySvc.Load();
+            KillSwitchSvc  = new Services.KillSwitchService(LogSvc);
+            TunnelSvc      = new TunnelService(LogSvc, ScriptSvc, HistorySvc, KillSwitchSvc);
+            WifiSvc        = new WiFiService();
+            RuleEngine     = new RuleEngine();
 
             // ── Build ViewModel ───────────────────────────────────────────────
             _vm = new MainViewModel(ConfigSvc, TunnelSvc, LogSvc, WifiSvc, RuleEngine);
@@ -168,6 +173,9 @@ namespace MasselGUARD
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             ForceTaskbarButton();
+
+            // Remove any stale kill-switch firewall rules left from a previous crash
+            KillSwitchSvc.CleanupStaleRules();
 
             // Log level from config
             LogSvc.IsExtended = ConfigSvc.Config.LogLevelSetting == "extended";
@@ -682,7 +690,6 @@ namespace MasselGUARD
 
         // ── Tunnel sort click handlers ────────────────────────────────────────
         private void TunSort_Name  (object s, RoutedEventArgs e) => TunnelSort("Name");
-        private void TunSort_Type  (object s, RoutedEventArgs e) => TunnelSort("Type");
         private void TunSort_Status(object s, RoutedEventArgs e) => TunnelSort("Status");
         private void TunSort_Rules (object s, RoutedEventArgs e) => TunnelSort("Rules");
 
@@ -698,7 +705,6 @@ namespace MasselGUARD
         {
             string asc = "▲", desc = "▼";
             TunArrowName.Text   = _tunnelSortCol == "Name"   ? (_tunnelSortAsc ? asc : desc) : "";
-            TunArrowType.Text   = _tunnelSortCol == "Type"   ? (_tunnelSortAsc ? asc : desc) : "";
             TunArrowStatus.Text = _tunnelSortCol == "Status" ? (_tunnelSortAsc ? asc : desc) : "";
             TunArrowRules.Text  = _tunnelSortCol == "Rules"  ? (_tunnelSortAsc ? asc : desc) : "";
         }
@@ -884,8 +890,11 @@ namespace MasselGUARD
         // ── Dialog dispatchers (called by ViewModel events) ───────────────────
         private void OnAddTunnel()
         {
-            var groupNames = ConfigSvc.Config.TunnelGroups.Select(g => g.Name).ToList();
-            var dlg = new Views.TunnelConfigDialog(groupNames: groupNames) { Owner = this };
+            var groupNames    = ConfigSvc.Config.TunnelGroups.Select(g => g.Name).ToList();
+            bool isGlobalAlways = ConfigSvc.Config.KillSwitchMode == "always";
+            var dlg = new Views.TunnelConfigDialog(
+                groupNames: groupNames,
+                isGlobalAlways: isGlobalAlways) { Owner = this };
             if (dlg.ShowDialog() != true) return;
             var stored = new StoredTunnel
             {
@@ -897,6 +906,7 @@ namespace MasselGUARD
                 PostConnectScript   = dlg.ResultPostConnectScript,
                 PreDisconnectScript = dlg.ResultPreDisconnectScript,
                 PostDisconnectScript= dlg.ResultPostDisconnectScript,
+                KillSwitch          = dlg.ResultKillSwitch,
             };
             ConfigSvc.Config.Tunnels.Add(stored);
             ConfigSvc.Save();
@@ -910,6 +920,7 @@ namespace MasselGUARD
             bool isDefault = ConfigSvc.Config.DefaultTunnel    == stored.Name
                           && ConfigSvc.Config.DefaultAction == "activate";
             bool isOpen    = ConfigSvc.Config.OpenWifiTunnel   == stored.Name;
+            bool isGlobalAlways = ConfigSvc.Config.KillSwitchMode == "always";
 
             var groupNames = ConfigSvc.Config.TunnelGroups.Select(g => g.Name).ToList();
             var dlg = stored.Source == "local"
@@ -917,14 +928,18 @@ namespace MasselGUARD
                     stored.Name, stored.Config, stored.Group,
                     stored.PreConnectScript, stored.PostConnectScript,
                     stored.PreDisconnectScript, stored.PostDisconnectScript,
-                    isDefault, isOpen, groupNames)
+                    isDefault, isOpen, groupNames,
+                    isKillSwitch: stored.KillSwitch || isGlobalAlways,
+                    isGlobalAlways: isGlobalAlways)
                     { Owner = this }
                 : new Views.TunnelMetadataDialog(
                     stored.Name, stored.Group, stored.Notes,
                     ConfigSvc.Config.TunnelGroups.Select(g=>g.Name).ToList(),
                     stored.PreConnectScript, stored.PostConnectScript,
                     stored.PreDisconnectScript, stored.PostDisconnectScript,
-                    isDefault, isOpen)
+                    isDefault, isOpen,
+                    isKillSwitch: stored.KillSwitch || isGlobalAlways,
+                    isGlobalAlways: isGlobalAlways)
                     { Owner = this };
 
             if (dlg.ShowDialog() != true) return;
@@ -942,6 +957,7 @@ namespace MasselGUARD
                 stored.PostDisconnectScript = tcd.ResultPostDisconnectScript;
                 newDefault = tcd.ResultIsDefault;
                 newOpen    = tcd.ResultIsOpenProtection;
+                if (!isGlobalAlways) stored.KillSwitch = tcd.ResultKillSwitch;
             }
             else if (dlg is Views.TunnelMetadataDialog tmd)
             {
@@ -953,6 +969,7 @@ namespace MasselGUARD
                 stored.PostDisconnectScript = tmd.ResultPostDisconnectScript;
                 newDefault = tmd.ResultIsDefault;
                 newOpen    = tmd.ResultIsOpenProtection;
+                if (!isGlobalAlways) stored.KillSwitch = tmd.ResultKillSwitch;
             }
             else return;
 
@@ -2545,16 +2562,13 @@ namespace MasselGUARD
             var installDir = GetInstalledPath();
             if (installDir == null || !System.IO.Directory.Exists(installDir))
             {
-                MessageBox.Show(Lang.T("NotInstalled"), Lang.T("UninstallTitle"),
-                    MessageBoxButton.OK, MessageBoxImage.Information); return;
+                ShowThemedInfo(Lang.T("NotInstalled"), Lang.T("UninstallTitle")); return;
             }
-            if (MessageBox.Show(Lang.T("UninstallConfirm"), Lang.T("UninstallTitle"),
-                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            if (!ShowThemedYesNo(Lang.T("UninstallConfirm"), Lang.T("UninstallTitle")))
                 return;
 
-            bool keepConfig = MessageBox.Show(Lang.T("UninstallKeepConfig"),
-                Lang.T("UninstallKeepConfigTitle"),
-                MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+            bool keepConfig = ShowThemedYesNo(Lang.T("UninstallKeepConfig"),
+                Lang.T("UninstallKeepConfigTitle"));
 
             try
             {
@@ -2598,8 +2612,7 @@ namespace MasselGUARD
             catch (Exception ex)
             {
                 LogSvc.Warn($"Uninstall failed: {ex.Message}");
-                MessageBox.Show(Lang.T("UninstallFailed", ex.Message), Lang.T("UninstallTitle"),
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowThemedInfo(Lang.T("UninstallFailed", ex.Message), Lang.T("UninstallTitle"));
             }
         }
 

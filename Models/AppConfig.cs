@@ -80,6 +80,28 @@ namespace MasselGUARD.Models
         public string  WireGuardInstallDirectory { get; set; } = @"C:\Program Files\WireGuard";
         public string? InstalledPath    { get; set; } = null;
 
+        // ── Auto-reconnect ────────────────────────────────────────────────────
+        /// <summary>
+        /// When true, MasselGUARD automatically reconnects tunnels that drop
+        /// unexpectedly (e.g. after the machine wakes from sleep).
+        /// </summary>
+        public bool AutoReconnect { get; set; } = true;
+
+        // ── DNS leak indicator ────────────────────────────────────────────────
+        /// <summary>
+        /// When true (default), a DNS leak status badge (🔒/⚠/ⓘ) is shown
+        /// inline next to each active tunnel's status.
+        /// </summary>
+        public bool ShowDnsIndicator { get; set; } = true;
+
+        // ── Kill switch ───────────────────────────────────────────────────────
+        /// <summary>
+        /// "per-tunnel" — each tunnel controls its own kill switch toggle (default).
+        /// "always"     — kill switch is always active for every tunnel regardless of
+        ///                the per-tunnel setting.
+        /// </summary>
+        public string KillSwitchMode { get; set; } = "per-tunnel";
+
         // ── Update checker ───────────────────────────────────────────────────
         public DateTime LastUpdateCheck    { get; set; } = DateTime.MinValue;
         public string?  LatestKnownVersion { get; set; } = null;

@@ -20,6 +20,7 @@ namespace MasselGUARD.Views
         public string  ResultPostDisconnectScript { get; private set; } = "";
         public bool    ResultIsDefault         { get; private set; }
         public bool    ResultIsOpenProtection  { get; private set; }
+        public bool    ResultKillSwitch        { get; private set; }
 
         private readonly string? _originalName;
 
@@ -28,7 +29,8 @@ namespace MasselGUARD.Views
                                   string? preConnect = null, string? postConnect = null,
                                   string? preDisconnect = null, string? postDisconnect = null,
                                   bool isDefault = false, bool isOpenProtection = false,
-                                  List<string>? groupNames = null)
+                                  List<string>? groupNames = null,
+                                  bool isKillSwitch = false, bool isGlobalAlways = false)
         {
             InitializeComponent();
             _originalName = existingName;
@@ -68,6 +70,19 @@ namespace MasselGUARD.Views
             // Default / open protection toggles
             if (IsDefaultToggle        != null) IsDefaultToggle.IsChecked        = isDefault;
             if (IsOpenProtectionToggle != null) IsOpenProtectionToggle.IsChecked = isOpenProtection;
+
+            // Kill switch toggle
+            if (KillSwitchToggle != null)
+            {
+                KillSwitchToggle.IsChecked = isKillSwitch;
+                if (isGlobalAlways)
+                {
+                    KillSwitchToggle.IsEnabled = false;
+                    KillSwitchToggle.Opacity   = 0.5;
+                    if (KillSwitchToggleLabel != null)
+                        KillSwitchToggleLabel.Text = "🔒 Kill switch  (controlled globally)";
+                }
+            }
         }
 
         // ── Load config into form fields ─────────────────────────────────────
@@ -199,6 +214,7 @@ namespace MasselGUARD.Views
             ResultPostDisconnectScript = CaptureScript(PostDisconnectBox, PostDisconnectEmbedBox, PostDisconnectEmbed);
             ResultIsDefault        = IsDefaultToggle?.IsChecked        == true;
             ResultIsOpenProtection = IsOpenProtectionToggle?.IsChecked == true;
+            ResultKillSwitch       = KillSwitchToggle?.IsChecked       == true;
             DialogResult = true;
         }
 

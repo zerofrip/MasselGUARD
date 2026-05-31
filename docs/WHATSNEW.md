@@ -1,4 +1,62 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  v3.2.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Kill switch
+  • Per-tunnel kill switch: blocks all non-tunnel outbound traffic via
+    Windows Firewall when a tunnel is active — no traffic leaks if the
+    tunnel drops.
+  • Global kill switch mode "Always": kill switch is forced on for every
+    tunnel; the per-tunnel toggle is hidden in this mode.
+  • Firewall rules use the MasselGUARD_KS_ prefix and are removed cleanly
+    on exit. Stale rules from a previous crash are cleaned up at startup.
+  • Toggle in the tunnel edit dialog; global mode in Settings → Advanced.
+
+Activity log (Extended mode)
+  • A grey continuation line appears under each disconnect entry showing
+    the session duration and bandwidth (↑ sent / ↓ received).
+    Only shown when log level is Extended.
+
+Settings — history table
+  • Completely rewritten: removed WPF GridView, replaced with a custom
+    header bar and DataTemplate rows.
+  • Hover and selection now use the theme ListHover / ListSelected colours
+    — no Aero highlight, no 3-D border effect.
+  • Hover tooltip shows full connected-at timestamp, duration, and trigger.
+
+Settings — WiFi rules table
+  • Rules table in Settings now matches the main window: five columns
+    (Name | SSID | Action | Hits | Tunnel), same header bar and row style.
+
+Settings — Import / Export
+  • Export and import confirmation dialogs are now fully themed.
+  • After a successful import a themed prompt offers to restart immediately.
+    Declining shows a warning that some displayed values may not yet reflect
+    the imported settings.
+  • Version mismatch warnings (file older or newer than current build) now
+    show proper translated text in all five languages.
+
+About tab — What's New panel
+  • Release notes fetched live from the GitHub repository and
+    displayed inline in Settings → About — no browser needed.
+  • Offline fallback shows a styled panel with clickable links
+    to GitHub and masselink.net.
+  • About tab reorganised into named sections: UPDATES,
+    MASSELGUARD, WHAT'S NEW.
+
+WiFi rule edit dialog
+  • The Edit Rule dialog now shows the rule's hit counter.
+  • (Re)set counter button opens a small input dialog — type a
+    number to set, type 0 to clear. Cancel makes no change.
+  • Counter changes are recorded in the activity log:
+      Counter: 42 → 10
+
+Window close
+  • X button (or Alt+F4) hides the window to the tray as before.
+  • Shift+X performs a clean exit — same as Tray → Exit.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   v3.1.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

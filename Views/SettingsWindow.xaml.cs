@@ -60,6 +60,7 @@ namespace MasselGUARD.Views
                 "TabBtnDefaultAction" => "DefaultAction",
                 "TabBtnRules"         => "Rules",
                 "TabBtnAdvanced"      => "Advanced",
+                "TabBtnHistory"       => "History",
                 "TabBtnAbout"         => "About",
                 _                     => "General",
             };
@@ -76,6 +77,7 @@ namespace MasselGUARD.Views
             PageDefaultAction.Visibility = tab == "DefaultAction" ? Visibility.Visible : Visibility.Collapsed;
             PageRules.Visibility         = tab == "Rules"         ? Visibility.Visible : Visibility.Collapsed;
             PageAdvanced.Visibility      = tab == "Advanced"      ? Visibility.Visible : Visibility.Collapsed;
+            PageHistory.Visibility       = tab == "History"       ? Visibility.Visible : Visibility.Collapsed;
             PageAbout.Visibility         = tab == "About"         ? Visibility.Visible : Visibility.Collapsed;
 
             TabBtnGeneral.Tag       = tab == "General"       ? "Active" : null;
@@ -84,9 +86,11 @@ namespace MasselGUARD.Views
             TabBtnDefaultAction.Tag = tab == "DefaultAction" ? "Active" : null;
             TabBtnRules.Tag         = tab == "Rules"         ? "Active" : null;
             TabBtnAdvanced.Tag      = tab == "Advanced"      ? "Active" : null;
+            TabBtnHistory.Tag       = tab == "History"       ? "Active" : null;
             TabBtnAbout.Tag         = tab == "About"         ? "Active" : null;
 
-            if (tab == "Advanced")   { RefreshInstallState(); RefreshDllStatus(); RefreshWireGuardSection(); ScanOrphans(); PopulateLogLevelPicker(); SyncStartWithWindows(); SyncConfirmOnClose(); }
+            if (tab == "Advanced")   { RefreshInstallState(); RefreshDllStatus(); RefreshWireGuardSection(); ScanOrphans(); PopulateLogLevelPicker(); SyncStartWithWindows(); SyncConfirmOnClose(); SyncAutoReconnect(); SyncShowDnsIndicator(); SyncKsMode(); }
+            if (tab == "History")    RefreshHistoryTab();
             if (tab == "About")      RefreshUpdateState();
             if (tab == "Appearance") PopulateThemePicker();
             if (tab == "General")    { RefreshGroupList(); RefreshModeStatusBox(); }
@@ -1282,10 +1286,8 @@ namespace MasselGUARD.Views
 
         private void OnExportSettings()
         {
-            var warn = MessageBox.Show(Lang.T("SettingsExportWarning"),
-                Lang.T("SettingsExportTitle"),
-                MessageBoxButton.OKCancel, MessageBoxImage.Information);
-            if (warn != MessageBoxResult.OK) return;
+            if (!_main.ShowThemedYesNo(Lang.T("SettingsExportWarning"), Lang.T("SettingsExportTitle")))
+                return;
 
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
@@ -1303,9 +1305,7 @@ namespace MasselGUARD.Views
             }
             catch (Exception ex)
             {
-                MessageBox.Show(Lang.T("SettingsExportError", ex.Message),
-                    Lang.T("SettingsExportTitle"),
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                _main.ShowThemedInfo(Lang.T("SettingsExportError", ex.Message), Lang.T("SettingsExportTitle"));
             }
         }
 
@@ -1327,11 +1327,7 @@ namespace MasselGUARD.Views
                 {
                     int cmp = string.Compare(fileVersion, current, StringComparison.OrdinalIgnoreCase);
                     var key = cmp > 0 ? "SettingsImportVersionNewer" : "SettingsImportVersionWarning";
-                    var proceed = MessageBox.Show(
-                        Lang.T(key, fileVersion, current),
-                        Lang.T("SettingsImportTitle"),
-                        MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                    if (proceed != MessageBoxResult.Yes)
+                    if (!_main.ShowThemedYesNo(Lang.T(key, fileVersion, current), Lang.T("SettingsImportTitle")))
                     {
                         // Re-load the original config
                         _main.ConfigSvc.Load();
@@ -1341,15 +1337,32 @@ namespace MasselGUARD.Views
 
                 _vm.LoadFromConfig();
                 ShowTab(_activeTab);
-                MessageBox.Show(Lang.T("SettingsImportSuccess"),
-                    Lang.T("SettingsImportTitle"),
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+
+                // Ask whether to restart now so the imported settings take full effect
+                bool restart = _main.ShowThemedYesNo(
+                    Lang.T("SettingsImportSuccess"),
+                    Lang.T("SettingsImportTitle"));
+
+                if (restart)
+                {
+                    // Config is already saved by Import(); restart the process
+                    string? exe = Environment.ProcessPath;
+                    if (!string.IsNullOrEmpty(exe))
+                        System.Diagnostics.Process.Start(
+                            new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true });
+                    ((App)System.Windows.Application.Current).ShutdownApp();
+                }
+                else
+                {
+                    // Config is saved; warn that some UI values may lag until restart
+                    _main.ShowThemedInfo(
+                        Lang.T("SettingsImportNoRestart"),
+                        Lang.T("SettingsImportTitle"));
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(Lang.T("SettingsImportError", ex.Message),
-                    Lang.T("SettingsImportTitle"),
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                _main.ShowThemedInfo(Lang.T("SettingsImportError", ex.Message), Lang.T("SettingsImportTitle"));
             }
         }
 
@@ -1596,6 +1609,51 @@ namespace MasselGUARD.Views
             _draft.ConfirmOnClose = ConfirmOnCloseToggle?.IsChecked == true;
         }
 
+        private void SyncAutoReconnect()
+        {
+            if (AutoReconnectToggle == null) return;
+            _loading = true;
+            AutoReconnectToggle.IsChecked = _draft.AutoReconnect;
+            _loading = false;
+        }
+
+        private void AutoReconnect_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_loading) return;
+            _draft.AutoReconnect = AutoReconnectToggle?.IsChecked == true;
+        }
+
+        private void SyncShowDnsIndicator()
+        {
+            if (ShowDnsIndicatorToggle == null) return;
+            _loading = true;
+            ShowDnsIndicatorToggle.IsChecked = _draft.ShowDnsIndicator;
+            _loading = false;
+        }
+
+        private void ShowDnsIndicator_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_loading) return;
+            _draft.ShowDnsIndicator = ShowDnsIndicatorToggle?.IsChecked == true;
+        }
+
+        private void SyncKsMode()
+        {
+            if (KsModePerTunnel == null || KsModeAlways == null) return;
+            _loading = true;
+            var mode = _draft.KillSwitchMode ?? "per-tunnel";
+            KsModePerTunnel.IsChecked = mode != "always";
+            KsModeAlways.IsChecked    = mode == "always";
+            _loading = false;
+        }
+
+        private void KsMode_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_loading) return;
+            if (sender is System.Windows.Controls.RadioButton rb && rb.Tag is string tag)
+                _draft.KillSwitchMode = tag;
+        }
+
         private void InstallBtn_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             _main.RunInstallPublic();
@@ -1703,6 +1761,9 @@ namespace MasselGUARD.Views
             _main.ConfigSvc.Config.UseCustomTheme      = _draft.UseCustomTheme;
             _main.ConfigSvc.Config.SystemThemeMode     = _draft.SystemThemeMode;
             _main.ConfigSvc.Config.ConfirmOnClose      = _draft.ConfirmOnClose;
+            _main.ConfigSvc.Config.AutoReconnect       = _draft.AutoReconnect;
+            _main.ConfigSvc.Config.ShowDnsIndicator    = _draft.ShowDnsIndicator;
+            _main.ConfigSvc.Config.KillSwitchMode      = _draft.KillSwitchMode;
             _main.ConfigSvc.Config.FontOverrideEnabled = _draft.FontOverrideEnabled;
             _main.ConfigSvc.Config.FontOverrideFamily  = _draft.FontOverrideFamily;
             _main.ConfigSvc.Config.FontOverrideSize    = _draft.FontOverrideSize;
@@ -1760,6 +1821,8 @@ namespace MasselGUARD.Views
             Check("Hide empty groups",     before.HideEmptyGroups,       after.HideEmptyGroups);
             Check("Hide count badge",      before.AlwaysHideTunnelCount, after.AlwaysHideTunnelCount);
             Check("Default group",         before.DefaultGroup,          after.DefaultGroup);
+            Check("Show DNS indicator",    before.ShowDnsIndicator,      after.ShowDnsIndicator);
+            Check("Kill switch mode",      before.KillSwitchMode,        after.KillSwitchMode);
             Check("Font override",         before.FontOverrideEnabled,   after.FontOverrideEnabled);
             Check("Font family",           before.FontOverrideFamily,    after.FontOverrideFamily);
             Check("Font size",             before.FontOverrideSize,      after.FontOverrideSize);
@@ -1777,6 +1840,29 @@ namespace MasselGUARD.Views
             var grpRemoved = before.TunnelGroups.Where(g => !after.TunnelGroups.Any(a => a.Name == g.Name)).ToList();
             foreach (var g in grpAdded)   log.Debug($"[Settings] Group added:   {g.Name}");
             foreach (var g in grpRemoved) log.Debug($"[Settings] Group removed: {g.Name}");
+        }
+
+        // ── History tab ───────────────────────────────────────────────────────
+
+        private void RefreshHistoryTab()
+        {
+            var entries = _main.HistorySvc.Entries;
+            var items   = entries
+                .Select(e => new ViewModels.HistoryEntryViewModel(e))
+                .ToList();
+
+            HistoryList.ItemsSource = items;
+
+            int total = entries.Count;
+            HistoryCountLabel.Text = total == 0
+                ? Lang.T("HistoryEmpty")
+                : Lang.T("HistoryCount", total);
+        }
+
+        private void ClearHistory_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            _main.HistorySvc.Clear();
+            RefreshHistoryTab();
         }
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

@@ -12,6 +12,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.MemoryMappedFiles;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Text;
@@ -249,6 +250,115 @@ namespace MasselGUARD
         public static bool IsRunning(string tunnelName)
         {
             lock (_lock) { return _connected.Contains(tunnelName); }
+        }
+
+        // ── Traffic stats ─────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Per-tunnel statistics read from the Windows network interface.
+        /// Available for both wireguard-NT (local) and WireGuard-for-Windows (companion) tunnels.
+        /// </summary>
+        public struct TunnelStats
+        {
+            /// <summary>True if a network adapter named exactly <c>tunnelName</c> was found.</summary>
+            public bool AdapterFound;
+            /// <summary>True if the adapter is operationally up (passing traffic).</summary>
+            public bool AdapterUp;
+            /// <summary>Cumulative bytes received since the adapter was created.</summary>
+            public long RxBytes;
+            /// <summary>Cumulative bytes sent since the adapter was created.</summary>
+            public long TxBytes;
+        }
+
+        /// <summary>
+        /// Returns traffic stats for an active tunnel by querying the Windows network interface.
+        /// Returns a zeroed struct (AdapterFound = false) if the adapter is not present.
+        /// </summary>
+        public static TunnelStats GetTrafficStats(string tunnelName)
+        {
+            try
+            {
+                var ifaces = System.Net.NetworkInformation.NetworkInterface
+                    .GetAllNetworkInterfaces();
+                var iface = ifaces.FirstOrDefault(i =>
+                    i.Name.Equals(tunnelName, StringComparison.OrdinalIgnoreCase));
+
+                if (iface == null) return default;
+
+                bool up   = iface.OperationalStatus ==
+                            System.Net.NetworkInformation.OperationalStatus.Up;
+                var  ipv4 = iface.GetIPv4Statistics();
+                return new TunnelStats
+                {
+                    AdapterFound = true,
+                    AdapterUp    = up,
+                    RxBytes      = ipv4.BytesReceived,
+                    TxBytes      = ipv4.BytesSent,
+                };
+            }
+            catch { return default; }
+        }
+
+        /// <summary>
+        /// Removes a tunnel from the in-memory connected set.
+        /// Used when the kernel adapter is detected as gone (e.g. after sleep/wake)
+        /// while <see cref="IsRunning"/> still returns true.
+        /// </summary>
+        public static void ForceMarkDisconnected(string tunnelName)
+        {
+            lock (_lock) { _connected.Remove(tunnelName); }
+        }
+
+        // ── DNS leak check ────────────────────────────────────────────────────
+
+        /// <summary>DNS routing status for an active tunnel.</summary>
+        public enum DnsLeakStatus
+        {
+            /// <summary>Could not determine status (adapter not found or error).</summary>
+            Unknown,
+            /// <summary>The tunnel adapter has DNS configured and no other active
+            /// adapter has external DNS servers — DNS is fully protected.</summary>
+            Secure,
+            /// <summary>The tunnel has DNS, but other active adapters also have
+            /// non-loopback DNS servers that the OS may query — potential leak.</summary>
+            PotentialLeak,
+            /// <summary>The tunnel adapter has no DNS servers configured — DNS
+            /// queries will bypass the tunnel.</summary>
+            NotConfigured,
+        }
+
+        /// <summary>
+        /// Checks whether DNS is being routed through the tunnel or could be leaking.
+        /// Compares the DNS addresses on the tunnel adapter against all other active adapters.
+        /// </summary>
+        public static DnsLeakStatus CheckDnsLeak(string tunnelName)
+        {
+            try
+            {
+                var ifaces = System.Net.NetworkInformation.NetworkInterface
+                    .GetAllNetworkInterfaces()
+                    .Where(i =>
+                        i.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                        i.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+                    .ToList();
+
+                var tunnelIface = ifaces.FirstOrDefault(i =>
+                    i.Name.Equals(tunnelName, StringComparison.OrdinalIgnoreCase));
+
+                if (tunnelIface == null) return DnsLeakStatus.Unknown;
+
+                var tunnelDns = tunnelIface.GetIPProperties().DnsAddresses;
+                if (tunnelDns.Count == 0) return DnsLeakStatus.NotConfigured;
+
+                // Check other adapters for non-loopback DNS servers
+                bool otherHasDns = ifaces
+                    .Where(i => !i.Name.Equals(tunnelName, StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(i => i.GetIPProperties().DnsAddresses)
+                    .Any(a => !System.Net.IPAddress.IsLoopback(a));
+
+                return otherHasDns ? DnsLeakStatus.PotentialLeak : DnsLeakStatus.Secure;
+            }
+            catch { return DnsLeakStatus.Unknown; }
         }
 
         // ── Log file path ─────────────────────────────────────────────────────

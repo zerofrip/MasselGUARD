@@ -36,9 +36,68 @@ namespace MasselGUARD.ViewModels
                 OnPropertyChanged(nameof(ButtonEnabled));
                 OnPropertyChanged(nameof(StatusColor));
                 OnPropertyChanged(nameof(NameColor));
+                OnPropertyChanged(nameof(TrafficVisibility));
                 ConnectCommand.RaiseCanExecuteChanged();
                 DisconnectCommand.RaiseCanExecuteChanged();
             }
+        }
+
+        // ── Auto-reconnect flag ───────────────────────────────────────────────
+        /// <summary>
+        /// True when the last disconnect was user-initiated (or rule-triggered).
+        /// Used to suppress auto-reconnect when the user deliberately disconnected.
+        /// </summary>
+        public bool UserDisconnected { get; set; } = false;
+
+        // ── Connection-source tag (for history) ───────────────────────────────
+        /// <summary>
+        /// Set this before calling <see cref="ConnectCommand"/> to record
+        /// how the connection was triggered (e.g. "WiFi Rule: HomeNet → Work VPN").
+        /// Consumed and reset to "Manual" inside <see cref="DoConnect"/>.
+        /// </summary>
+        public string PendingConnectSource { get; set; } = "Manual";
+
+        // ── DNS leak status ───────────────────────────────────────────────────
+        private TunnelDll.DnsLeakStatus _dnsStatus = TunnelDll.DnsLeakStatus.Unknown;
+
+        public string DnsLeakDisplay => _dnsStatus switch
+        {
+            TunnelDll.DnsLeakStatus.Secure         => "🔒 DNS",
+            TunnelDll.DnsLeakStatus.PotentialLeak  => "⚠ DNS",
+            TunnelDll.DnsLeakStatus.NotConfigured  => "ⓘ DNS",
+            _                                      => "",
+        };
+
+        public string DnsLeakTooltip => _dnsStatus switch
+        {
+            TunnelDll.DnsLeakStatus.Secure        => "DNS routed through tunnel — protected",
+            TunnelDll.DnsLeakStatus.PotentialLeak => "Other adapters have DNS servers — possible DNS leak",
+            TunnelDll.DnsLeakStatus.NotConfigured => "No DNS configured in tunnel — queries bypass VPN",
+            _                                     => "",
+        };
+
+        public System.Windows.Media.Brush DnsLeakColor => _dnsStatus switch
+        {
+            TunnelDll.DnsLeakStatus.Secure        => ThemeBrush("Success"),
+            TunnelDll.DnsLeakStatus.PotentialLeak => ThemeBrush("WarningColor"),
+            TunnelDll.DnsLeakStatus.NotConfigured => ThemeBrush("TextMuted"),
+            _                                     => ThemeBrush("TextMuted"),
+        };
+
+        public System.Windows.Visibility DnsLeakVisibility =>
+            IsActive
+            && _dnsStatus != TunnelDll.DnsLeakStatus.Unknown
+            && _config.Config.ShowDnsIndicator
+                ? System.Windows.Visibility.Visible
+                : System.Windows.Visibility.Collapsed;
+
+        public void UpdateDnsStatus(TunnelDll.DnsLeakStatus status)
+        {
+            _dnsStatus = status;
+            OnPropertyChanged(nameof(DnsLeakDisplay));
+            OnPropertyChanged(nameof(DnsLeakTooltip));
+            OnPropertyChanged(nameof(DnsLeakColor));
+            OnPropertyChanged(nameof(DnsLeakVisibility));
         }
 
         private bool _isAvailable = true;
@@ -73,6 +132,38 @@ namespace MasselGUARD.ViewModels
         public string StatusText    => IsActive
             ? $"● {UptimeDisplay}"
             : IsAvailable ? "○ Disconnected" : "Unavailable";
+
+        // ── Traffic stats ─────────────────────────────────────────────────────
+        private long _rxBytes;
+        private long _txBytes;
+
+        /// <summary>Formatted traffic display, e.g. "↑ 1.2 MB  ↓ 3.4 MB".</summary>
+        public string TrafficDisplay =>
+            IsActive && (_txBytes > 0 || _rxBytes > 0)
+                ? $"↑ {FormatBytes(_txBytes)}  ↓ {FormatBytes(_rxBytes)}"
+                : "";
+
+        public System.Windows.Visibility TrafficVisibility =>
+            IsActive && (_txBytes > 0 || _rxBytes > 0)
+                ? System.Windows.Visibility.Visible
+                : System.Windows.Visibility.Collapsed;
+
+        /// <summary>Updates traffic stats from a <see cref="TunnelDll.TunnelStats"/> snapshot.</summary>
+        public void UpdateStats(TunnelDll.TunnelStats stats)
+        {
+            _rxBytes = stats.RxBytes;
+            _txBytes = stats.TxBytes;
+            OnPropertyChanged(nameof(TrafficDisplay));
+            OnPropertyChanged(nameof(TrafficVisibility));
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            if (bytes < 1024)               return $"{bytes} B";
+            if (bytes < 1_048_576)          return $"{bytes / 1024.0:F1} KB";
+            if (bytes < 1_073_741_824)      return $"{bytes / 1_048_576.0:F1} MB";
+            return                                  $"{bytes / 1_073_741_824.0:F2} GB";
+        }
 
         public string UptimeDisplay
         {
@@ -197,12 +288,19 @@ namespace MasselGUARD.ViewModels
 
         private void DoConnect()
         {
-            _tunnels.Connect(StoredTunnel, _config.Config);
+            UserDisconnected = false;
+            string source = PendingConnectSource;
+            PendingConnectSource = "Manual"; // consume and reset for next call
+            _tunnels.Connect(StoredTunnel, _config.Config, source);
             RefreshStatus();
         }
 
         private void DoDisconnect()
         {
+            UserDisconnected = true;
+            _dnsStatus = TunnelDll.DnsLeakStatus.Unknown;
+            _rxBytes   = 0;
+            _txBytes   = 0;
             _tunnels.Disconnect(StoredTunnel);
             RefreshStatus();
         }

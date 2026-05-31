@@ -787,6 +787,9 @@ namespace MasselGUARD
 
         protected override void OnExit(ExitEventArgs e)
         {
+            // Restore Windows Firewall policy before disconnecting tunnels.
+            try { _mainWindow?.KillSwitchSvc?.DisableAll(); } catch { }
+
             // Stop all active local tunnel services before the process exits.
             // This prevents orphaned WireGuardTunnel$ services remaining in the SCM.
             try { TunnelDll.DisconnectAll(); } catch { }
