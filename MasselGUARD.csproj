@@ -22,10 +22,12 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
     <ApplicationIcon>MasselGUARD.ico</ApplicationIcon>
-    <Version>3.0.0</Version>
-    <AssemblyVersion>3.0.0.0</AssemblyVersion>
-    <FileVersion>3.0.0.0</FileVersion>
-    <InformationalVersion>3.0.0</InformationalVersion>
+    <!-- Default versions for IDE / dotnet build without BUILD.bat.
+         BUILD.bat overrides these via -p:Version / -p:InformationalVersion. -->
+    <Version>3.3.0</Version>
+    <AssemblyVersion>3.3.0.0</AssemblyVersion>
+    <FileVersion>3.3.0.0</FileVersion>
+    <InformationalVersion>3.3.0</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

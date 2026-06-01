@@ -4,20 +4,14 @@ setlocal enabledelayedexpansion
 
 rem ── Build number: YYMMDDHHMM ────────────────────────────────────────────────
 for /f %%a in ('powershell -NoProfile -Command "Get-Date -Format yyMMddHHmm"') do set BUILD_NUM=%%a
-set VERSION=3.2.0
-set FULL_VERSION=%VERSION%.%BUILD_NUM%
-
-rem ── Inject build number into UpdateChecker.cs ───────────────────────────────
-echo $f='UpdateChecker.cs'; (Get-Content $f) -replace 'private const string CurrentVersion = ".*?"', 'private const string CurrentVersion = "%FULL_VERSION%"' ^| Set-Content $f > "%TEMP%\mg_build.ps1"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\mg_build.ps1"
-del "%TEMP%\mg_build.ps1" >nul 2>&1
+set VERSION=3.3.0
 
 rem ── Opt out of .NET CLI telemetry ────────────────────────────────────────────
 set DOTNET_CLI_TELEMETRY_OPTOUT=1
 set DOTNET_NOLOGO=1
 echo.
 echo   ----------------------------------------
-echo     MasselGUARD  v%FULL_VERSION%
+echo            MasselGUARD  v%VERSION%
 echo     Harold Masselink  ^|  Claude.ai
 echo   ----------------------------------------
 echo.
@@ -66,7 +60,7 @@ echo  -------------------------------------------------------
 echo   Compiling MasselGUARD...
 echo  -------------------------------------------------------
 echo.
-dotnet publish "%~dp0MasselGUARD.csproj" -c Release -o "%~dp0dist" -v:minimal
+dotnet publish "%~dp0MasselGUARD.csproj" -c Release -o "%~dp0dist" -v:minimal -p:Version=%VERSION% -p:AssemblyVersion=%VERSION%.0 -p:FileVersion=%VERSION%.0 -p:InformationalVersion=%VERSION%.%BUILD_NUM%
 if errorlevel 1 (
     echo.
     echo  ==========================================

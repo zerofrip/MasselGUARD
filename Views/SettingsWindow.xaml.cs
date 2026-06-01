@@ -1379,6 +1379,13 @@ namespace MasselGUARD.Views
             if (VersionLabel != null)
                 VersionLabel.Text = $"v{current}";
 
+            // Build stamp — small muted line below the version
+            if (BuildLabel != null)
+            {
+                var stamp = UpdateChecker.BuildStamp;
+                BuildLabel.Text = string.IsNullOrEmpty(stamp) ? "" : $"Build {stamp}";
+            }
+
             // Last checked label
             if (LastCheckedLabel != null)
                 LastCheckedLabel.Text = cfg.LastUpdateCheck == default

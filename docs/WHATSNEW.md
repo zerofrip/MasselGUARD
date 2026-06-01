@@ -1,4 +1,24 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  v3.3.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Version and build number separated
+  • Version (Major.Minor.Patch) is now static in source — BUILD.bat no longer
+    modifies UpdateChecker.cs, so the working tree stays clean after a build.
+  • The time-based build stamp (YYMMDDHHMM) is injected at compile time via
+    MSBuild's InformationalVersion property and read from the assembly
+    attribute at runtime — no source file is touched.
+  • Settings → About shows version and build on separate lines:
+      v3.3.0
+      Build 2606011200
+  • In IDE / Debug builds without BUILD.bat the build line is hidden.
+
+Bug fixes
+  • DNS badge (🔒 DNS / ⚠ DNS) now disappears immediately on disconnect
+    instead of persisting until the next status poll tick.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   v3.2.5
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
