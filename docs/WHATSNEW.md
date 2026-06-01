@@ -1,6 +1,29 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  v3.3.0
+  v3.3.0  —  Camouflaged Koala
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Release codenames
+  • Each version now has a codename shown in the About page, the CLI
+    version output, and the BUILD.bat banner.
+  • v3.3.0 codename: Camouflaged Koala.
+
+About page — version block
+  • Version label now shows the full product name, version, and codename
+    on one line, with build stamp and author below:
+        MasselGUARD v3.3.0  |  Camouflaged Koala
+        build  2606011200
+  • Consistent format across GUI and CLI.
+
+Command-line interface improvements
+  • `version` output now matches the About page format and includes
+    author, website, and cached update status:
+        MasselGUARD v3.3.0  |  Camouflaged Koala
+        build:   2606011200
+        Harold Masselink  |  https://masselink.net
+        Update:  up to date
+  • Added `--list` alias for `list` and `--status` alias for `status`,
+    so both subcommand style and flag style work interchangeably.
+  • `--json` output for `version` now includes an `update_status` field.
 
 Version and build number separated
   • Version (Major.Minor.Patch) is now static in source — BUILD.bat no longer
@@ -8,14 +31,12 @@ Version and build number separated
   • The time-based build stamp (YYMMDDHHMM) is injected at compile time via
     MSBuild's InformationalVersion property and read from the assembly
     attribute at runtime — no source file is touched.
-  • Settings → About shows version and build on separate lines:
-      v3.3.0
-      Build 2606011200
   • In IDE / Debug builds without BUILD.bat the build line is hidden.
 
 Bug fixes
-  • DNS badge (🔒 DNS / ⚠ DNS) now disappears immediately on disconnect
-    instead of persisting until the next status poll tick.
+  • DNS badge (🔒 DNS / ⚠ DNS) now disappears immediately when a tunnel
+    is disconnected via the CLI or any external trigger, instead of
+    persisting until the next 1-second status poll tick.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

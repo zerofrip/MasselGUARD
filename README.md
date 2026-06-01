@@ -95,21 +95,54 @@ MasselGUARD sits in the system tray and watches your WiFi connection. When you j
 
 ---
 
+## Command-line interface
+
+MasselGUARD includes a full CLI for scripting and automation. Requires Administrator.
+
+```
+MasselGUARD version
+```
+```
+MasselGUARD v3.3.0  |  Camouflaged Koala
+build:   2506011430
+Harold Masselink  |  https://masselink.net
+Update:  up to date
+```
+
+| Command | Aliases | Description |
+|---|---|---|
+| `list` | `--list` | All tunnels + connected/idle status |
+| `status` | `--status` | Active tunnel count and names |
+| `connect <name>` | — | Connect a tunnel by name |
+| `connect --default` | — | Connect the configured default tunnel |
+| `disconnect <name>` | — | Disconnect a tunnel by name |
+| `disconnect-all` | — | Disconnect all active tunnels |
+| `version` | `--version`, `-v` | Version, build, author and update status |
+| `help` | `--help`, `-h` | Command reference |
+
+Flags available on any command: `--json` (machine-readable output), `--quiet` / `-q` (exit code only).
+
+Exit codes: `0` success · `1` error · `2` already in desired state.
+
+---
+
 ## Build
 
 ```bat
 BUILD.bat
 ```
 
-Generates build number (`3.2.0.YYMMDDHHMM`), injects into `UpdateChecker.cs`, compiles, copies output to `dist\`.
+Requires .NET 10 SDK. Generates a `YYMMDDHHMM` build stamp, compiles with `dotnet publish`, copies output to `dist\`.
 
 Banner:
 ```
-  ----------------------------------------
-    MasselGUARD  v3.2.0.YYMMDDHHMM
-    Harold Masselink  |  Claude.ai
-  ----------------------------------------
+  --------------------------------------------------
+  MasselGUARD  v3.3.0  |  Camouflaged Koala
+  Harold Masselink  |  https://masselink.net
+  --------------------------------------------------
 ```
+
+Update `CODENAME` in both `BUILD.bat` and `UpdateChecker.cs` when bumping the version.
 
 ---
 
