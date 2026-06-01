@@ -1,6 +1,6 @@
 # MasselGUARD — How it works
 
-Technical reference for v3.2.0 (build YYMMDDHHMM). For end-user instructions see [`MANUAL.md`](MANUAL.md).
+Technical reference for v3.3.0 — Camouflaged Koala. For end-user instructions see [`MANUAL.md`](MANUAL.md).
 
 ---
 
@@ -27,6 +27,7 @@ Technical reference for v3.2.0 (build YYMMDDHHMM). For end-user instructions see
 19. [Import / Export settings](#19-import--export-settings)
 20. [Build and deployment](#20-build-and-deployment)
 21. [Troubleshooting](#21-troubleshooting)
+22. [Command-line interface (CLI)](#22-command-line-interface-cli)
 
 ---
 
@@ -471,12 +472,30 @@ Continuation lines (detail sub-entries) render with a `↳` prefix in the timest
 ### BUILD.bat
 
 ```bat
+set VERSION=3.3.0
+set CODENAME=Camouflaged Koala
 set DOTNET_CLI_TELEMETRY_OPTOUT=1
 set DOTNET_NOLOGO=1
-dotnet publish → dist\
+dotnet publish -p:Version=%VERSION% -p:InformationalVersion=%VERSION%.%BUILD_NUM% → dist\
 copy theme\ → dist\theme\
 copy wireguard-deps\*.dll → dist\
 ```
+
+Banner printed during build:
+```
+  --------------------------------------------------
+  MasselGUARD  v3.3.0  |  Camouflaged Koala
+  Harold Masselink  |  https://masselink.net
+  --------------------------------------------------
+```
+
+Update `CODENAME` in both `BUILD.bat` **and** `UpdateChecker.cs` (`_codenames` dictionary) when bumping the version.
+
+### Version vs. build stamp
+
+- **Version** (`Major.Minor.Patch`) — static in source; never modified by BUILD.bat
+- **Build stamp** (`YYMMDDHHMM`) — injected as `InformationalVersion` at compile time via `-p:InformationalVersion`; read at runtime from `Assembly.GetEntryAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()`
+- Working tree stays clean after a build; no source file is patched
 
 ### tunnelbuild\tunnelbuild.bat
 
@@ -655,19 +674,22 @@ Sequence on network switch (MasselTHINGS → MasselNET):
 
 ## 30. Build number
 
-`BUILD.bat` generates the build number:
+`BUILD.bat` generates the build stamp and passes it to MSBuild — no source file is modified:
+
 ```bat
 for /f %%a in ('powershell -NoProfile -Command "Get-Date -Format yyMMddHHmm"') do set BUILD_NUM=%%a
-set FULL_VERSION=3.0.0.%BUILD_NUM%
+dotnet publish -p:Version=%VERSION% -p:InformationalVersion=%VERSION%.%BUILD_NUM%
 ```
 
-Injects into `UpdateChecker.cs` via a temp `.ps1` file:
-```bat
-echo ... -replace 'CurrentVersion = ".*?"', 'CurrentVersion = "%FULL_VERSION%"' | Set-Content $f > temp.ps1
-powershell -File temp.ps1
+`UpdateChecker.BuildStamp` reads it back at runtime:
+```csharp
+Assembly.GetEntryAssembly()
+    ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+    ?.InformationalVersion;
+// → "3.3.0.2506011430"  (last 10 chars = build stamp)
 ```
 
-`Version.TryParse` handles 4-part versions natively for comparison.
+`Version.TryParse` handles 4-part versions for comparison. The version component (`Major.Minor.Patch`) is always static; only the build stamp changes between builds.
 
 ---
 
@@ -769,6 +791,117 @@ The legacy `ShowTrayNotification(string title, string body, int durationMs)` ove
 2. `_vm.RebuildTunnelList()` — recomputes `TunnelEntryViewModel.RuleCount` for all tunnels from `ConfigSvc.Config.Rules`
 
 This ensures the Rules column in the tunnel list stays in sync with any rule change.
+
+---
+
+## 22. Command-line interface (CLI)
+
+### Entry point
+
+`Program.Main()` calls `CliRunner.IsCliInvocation(args)` before any WPF initialisation. Returns `true` when `args[0]` is any value other than `/service`. CLI mode runs without WPF — no `App`, no `MainWindow`.
+
+```
+Program.Main(args)
+  ├─ HandleServiceArgs(args)      /service dispatch — exits if matched
+  ├─ CliRunner.IsCliInvocation()  → true when non-/service arg present
+  │    └─ CliRunner.Run(args)     runs CLI, returns exit code
+  └─ HideConsoleForGuiLaunch()    GUI path — detaches console
+```
+
+### Console ownership detection
+
+`OutputType=Exe` (console subsystem) means Windows always allocates a console. For GUI launches, `HideConsoleForGuiLaunch()` hides and frees the console to prevent a black window.
+
+For CLI launches from a **non-elevated terminal**, the `requireAdministrator` manifest causes Windows to create a new isolated console for the elevated process. `IsIsolatedConsole()` detects this:
+
+```csharp
+[DllImport("kernel32.dll")]
+static extern uint GetConsoleProcessList(uint[] list, uint count);
+
+static bool IsIsolatedConsole()
+    => GetConsoleProcessList(new uint[2], 2) <= 1;
+```
+
+When isolated (count ≤ 1), `CliRunner.Run()` pauses before exit so the user can read the output, and prints a tip to run as Administrator for inline output.
+
+### Command routing
+
+`CliRunner.Run()` flow:
+
+```
+1. Parse global flags: --json, --quiet / -q
+2. Early switch: help / --help / -h / -?  → CmdHelp()  (no config needed)
+3. ConfigService.Load()
+4. cmd switch:
+     list / --list           → CmdList(cfg, json)
+     status / --status       → CmdStatus(cfg, json)
+     connect                 → CmdConnect(args, cfg, json, quiet)
+     disconnect              → CmdDisconnect(args, cfg, json, quiet)
+     disconnect-all          → CmdDisconnectAll(cfg, json, quiet)
+     version / --version/-v  → CmdVersion(cfg, json)
+     _                       → UnknownCmd(cmd)
+5. Console.Out.Flush()
+6. IsIsolatedConsole() pause (if !quiet)
+```
+
+### Version command
+
+`CmdVersion` reads update status from `cfg.LatestKnownVersion` (populated by the GUI's background update check):
+
+```csharp
+string updateStatus =
+    string.IsNullOrEmpty(latestKnown)             ? "unknown — run 'MasselGUARD status' to check" :
+    UpdateChecker.IsNewerVersion(latestKnown)      ? $"update available — v{latestKnown}" :
+    UpdateChecker.IsAheadOfLatest(latestKnown)     ? $"ahead of latest ({latestKnown})" :
+                                                     "up to date";
+```
+
+Plain output:
+```
+MasselGUARD v3.3.0  |  Camouflaged Koala
+build:   2506011430
+Harold Masselink  |  https://masselink.net
+Update:  up to date
+```
+
+JSON output adds `update_status` field alongside `version`, `codename`, `build`.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Error (tunnel not found, connect failed, not elevated, etc.) |
+| `2` | Already in desired state |
+
+### CliOutput
+
+`Cli/CliOutput.cs` — thin wrapper around `Console.Out` / `Console.Error`:
+
+| Method | Stream | Usage |
+|---|---|---|
+| `Info(msg)` | stdout | Normal output |
+| `Ok(msg)` | stdout | Success messages |
+| `Error(msg)` | stderr | Error messages |
+| `PrintJson(obj)` | stdout | Serialises `obj` with `System.Text.Json`, indented |
+
+---
+
+## 39. Release codenames
+
+`UpdateChecker._codenames` — static dictionary keyed by `"Major.Minor.Patch"`:
+
+```csharp
+private static readonly Dictionary<string, string> _codenames =
+    new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "3.3.0", "Camouflaged Koala" },
+    };
+```
+
+`UpdateChecker.Codename` returns the name for the current version or `""` if none is assigned. `UpdateChecker.VersionWithCodename` returns `"3.3.0 — Camouflaged Koala"` or just `"3.3.0"`.
+
+Codenames are assigned per `Major.Minor.Patch` release only — not per build. Update the dictionary in `UpdateChecker.cs` **and** `BUILD.bat` when bumping `VERSION`.
 
 ---
 

@@ -1,6 +1,6 @@
 # MasselGUARD — User Manual
 
-**Version 3.2.0**
+**Version 3.3.0 — Camouflaged Koala**
 
 ---
 
@@ -31,6 +31,7 @@
 23. [Font override](#23-font-override)
 24. [Multiple languages](#24-multiple-languages)
 25. [Frequently asked questions](#25-frequently-asked-questions)
+26. [Command-line interface (CLI)](#26-command-line-interface-cli)
 
 ---
 
@@ -353,7 +354,13 @@ When extended logging is active, only **changed** fields are logged after Save:
 
 ### Version and update
 
-- **Version label** — running build (e.g. `v3.1.0.2605301747`)
+The version block shows:
+```
+MasselGUARD v3.3.0  |  Camouflaged Koala
+build  2606011200
+```
+Version codenames are assigned per Major.Minor.Patch release. The build stamp is hidden in IDE/debug builds.
+
 - **Last checked** — timestamp of the most recent update check
 - **Status badge** — coloured pill:
   - `↑` update available → Download button appears
@@ -556,3 +563,89 @@ In the activity log (Extended mode). After each disconnect a grey continuation l
 
 **The import settings dialog showed raw placeholder text instead of a warning.**
 Fixed in v3.3.0 — `SettingsImportVersionWarning` and `SettingsImportVersionNewer` are now present in all five language files.
+
+---
+
+## 26. Command-line interface (CLI)
+
+MasselGUARD includes a full CLI for scripting and automation. The GUI and CLI share the same WireGuard kernel driver — any change made via CLI is reflected in the GUI within ~1 second.
+
+### Requirements
+
+Must run as Administrator. When invoked from a non-elevated terminal, Windows will prompt for elevation via UAC and open a new console window. To avoid the prompt, install MasselGUARD and enable **Start with Windows** (Settings → Advanced) — the Scheduled Task runs at `RunLevel=Highest` so no UAC dialog appears.
+
+**Tip:** run PowerShell or cmd.exe as Administrator for inline output without a separate window.
+
+### Commands
+
+| Command | Aliases | Description |
+|---|---|---|
+| `list` | `--list` | List all tunnels and their status |
+| `status` | `--status` | Show active tunnel count and names |
+| `connect <name>` | — | Connect a tunnel by name |
+| `connect --default` | — | Connect the configured default tunnel |
+| `disconnect <name>` | — | Disconnect a tunnel by name |
+| `disconnect-all` | — | Disconnect all active tunnels |
+| `version` | `--version`, `-v` | Show version, build, author and update status |
+| `help` | `--help`, `-h` | Show this command reference |
+
+### Flags
+
+| Flag | Description |
+|---|---|
+| `--json` | Machine-readable JSON output |
+| `--quiet`, `-q` | No output — exit code only (for scripting) |
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Error (tunnel not found, connect failed, not elevated, etc.) |
+| `2` | Already in desired state (already connected / already disconnected) |
+
+### Version output
+
+```
+MasselGUARD v3.3.0  |  Camouflaged Koala
+build:   2506011430
+Harold Masselink  |  https://masselink.net
+Update:  up to date
+```
+
+The update status is read from the cached result of the last update check. Run the GUI and use **Settings → About → Check now** to refresh it.
+
+### JSON output
+
+Add `--json` to any command for machine-readable output:
+
+```powershell
+MasselGUARD version --json
+```
+```json
+{
+  "version": "3.3.0",
+  "codename": "Camouflaged Koala",
+  "build": "2506011430",
+  "update_status": "up to date"
+}
+```
+
+```powershell
+MasselGUARD connect "Work VPN" --json
+```
+```json
+{ "result": "connected", "message": "Tunnel 'Work VPN' connected." }
+```
+
+### Scripting example
+
+```powershell
+# Connect silently, act on exit code
+MasselGUARD connect "Work VPN" --quiet
+switch ($LASTEXITCODE) {
+    0 { Write-Host "Connected." }
+    2 { Write-Host "Already connected." }
+    1 { Write-Host "Failed." }
+}
+```

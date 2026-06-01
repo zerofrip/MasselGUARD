@@ -71,6 +71,29 @@ namespace MasselGUARD
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         internal static extern bool SetDllDirectory(string lpPathName);
 
+        // Used by IsRunning() to probe the WireGuard management pipe
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        internal static extern IntPtr CreateFile(
+            string lpFileName, uint dwDesiredAccess, uint dwShareMode,
+            IntPtr lpSecurityAttributes, uint dwCreationDisposition,
+            uint dwFlagsAndAttributes, IntPtr hTemplateFile);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern bool CloseHandle(IntPtr hObject);
+
+        // Used by TearDownAdapter() to forcibly destroy the wireguard-NT kernel
+        // adapter when the tunnel service process has already exited.
+        // WireGuardCloseAdapter destroys the adapter when the last handle is closed.
+        [DllImport("wireguard.dll", EntryPoint = "WireGuardOpenAdapter",
+                   CallingConvention = CallingConvention.Cdecl,
+                   CharSet = CharSet.Unicode)]
+        internal static extern IntPtr WireGuardOpenAdapter(
+            [MarshalAs(UnmanagedType.LPWStr)] string name);
+
+        [DllImport("wireguard.dll", EntryPoint = "WireGuardCloseAdapter",
+                   CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void WireGuardCloseAdapter(IntPtr adapter);
+
         internal const uint SC_MANAGER_ALL_ACCESS           = 0xF003F;
         internal const uint SERVICE_ALL_ACCESS              = 0xF01FF;
         internal const uint SERVICE_WIN32_OWN_PROCESS       = 0x00000010;
@@ -234,7 +257,29 @@ namespace MasselGUARD
             lock (_lock) { _connected.Remove(tunnelName); }
             string serviceName = ServicePrefix + tunnelName.Replace(' ', '_');
             EnsureStopped(serviceName, _ => { });
+
+            // wireguard-NT's WireGuardTunnelService() exits in ~50-100 ms after
+            // installing the kernel adapter.  The SCM entry is then Stopped/gone,
+            // so EnsureStopped cannot send SERVICE_CONTROL_STOP and the kernel
+            // adapter (+ management pipe) stays alive.
+            //
+            // Fix: open the adapter via wireguard.dll and close the handle.
+            // WireGuardCloseAdapter destroys the adapter once the last handle is
+            // released — i.e. immediately when the service process has already exited.
+            TearDownAdapter(tunnelName);
+
             return true;
+        }
+
+        private static void TearDownAdapter(string tunnelName)
+        {
+            try
+            {
+                IntPtr adapter = NativeMethods.WireGuardOpenAdapter(tunnelName);
+                if (adapter != IntPtr.Zero)
+                    NativeMethods.WireGuardCloseAdapter(adapter);
+            }
+            catch { /* best effort — adapter may already be gone */ }
         }
 
         // ── DisconnectAll ─────────────────────────────────────────────────────
@@ -249,7 +294,51 @@ namespace MasselGUARD
         // ── IsRunning ─────────────────────────────────────────────────────────
         public static bool IsRunning(string tunnelName)
         {
-            lock (_lock) { return _connected.Contains(tunnelName); }
+            // Primary: check the SCM service status.
+            //
+            // When tunnel.dll's WireGuardTunnelService() runs properly it blocks for
+            // the lifetime of the tunnel, so the WireGuardTunnel$ service stays in
+            // the Running state.  A single SCM query is instant (~µs) and is the
+            // most reliable signal in that case.
+            string serviceName = ServicePrefix + tunnelName.Replace(' ', '_');
+            try
+            {
+                using var sc = new ServiceController(serviceName);
+                if (sc.Status == ServiceControllerStatus.Running)
+                    return true;
+            }
+            catch { /* service does not exist — fall through */ }
+
+            // Fallback: probe the WireGuard management pipe.
+            //
+            // Covers the edge case where the service process exited quickly (observed
+            // on some wireguard-NT configurations) but the kernel adapter and its
+            // management pipe are still alive.
+            //
+            // ERROR_PIPE_BUSY (231): pipe exists but server momentarily unavailable —
+            // still means the tunnel is up.
+            const uint GENERIC_READ    = 0x80000000;
+            const uint FILE_SHARE_RW   = 3;
+            const uint OPEN_EXISTING   = 3;
+            const int  INVALID_HANDLE  = -1;
+            const int  ERROR_PIPE_BUSY = 231;
+
+            try
+            {
+                IntPtr h = NativeMethods.CreateFile(
+                    $@"\\.\pipe\WireGuard\{tunnelName}",
+                    GENERIC_READ, FILE_SHARE_RW,
+                    IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+
+                if (h != new IntPtr(INVALID_HANDLE))
+                {
+                    NativeMethods.CloseHandle(h);
+                    return true;
+                }
+                return System.Runtime.InteropServices.Marshal
+                    .GetLastWin32Error() == ERROR_PIPE_BUSY;
+            }
+            catch { return false; }
         }
 
         // ── Traffic stats ─────────────────────────────────────────────────────

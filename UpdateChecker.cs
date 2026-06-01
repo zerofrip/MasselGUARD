@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Threading;
@@ -23,7 +24,18 @@ namespace MasselGUARD
     {
         private const string TagsApiUrl     = "https://api.github.com/repos/masselink/MasselGUARD/tags";
         private const string ReleasesApiUrl = "https://api.github.com/repos/masselink/MasselGUARD/releases";
-        private const string CurrentVersion = "3.2.0.2605311841";  // updated by build.bat — keep in sync with AppTitle
+        // Major.Minor.Patch only — static, never modified by build.
+        // The build timestamp is injected at compile time via -p:InformationalVersion
+        // and read at runtime from the assembly attribute (see BuildStamp below).
+        private const string CurrentVersion = "3.3.0";
+
+        // Release codenames — one entry per public version, keyed by Major.Minor.Patch.
+        // Update both here AND in BUILD.bat (set CODENAME=...) when bumping the version.
+        private static readonly System.Collections.Generic.Dictionary<string, string> _codenames =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                { "3.3.0", "Camouflaged Koala" },
+            };
 
         // ── Public: silent background check (called on startup) ──────────────
         public static async Task CheckAsync(AppConfig cfg, Action saveConfig,
@@ -135,7 +147,58 @@ namespace MasselGUARD
             return current > latest;
         }
 
+        /// <summary>Major.Minor.Patch — use for version comparisons and display.</summary>
         public static string CurrentVersionString => CurrentVersion;
+
+        /// <summary>
+        /// Optional codename for the current version, e.g. "Camouflaged Koala".
+        /// Returns an empty string for versions without a codename.
+        /// </summary>
+        public static string Codename =>
+            _codenames.TryGetValue(CurrentVersion, out var name) ? name : "";
+
+        /// <summary>
+        /// Version + codename for display: "3.3.0 — Camouflaged Koala".
+        /// Falls back to just the version string when no codename is set.
+        /// </summary>
+        public static string VersionWithCodename
+        {
+            get
+            {
+                var cn = Codename;
+                return string.IsNullOrEmpty(cn) ? CurrentVersionString : $"{CurrentVersionString} — {cn}";
+            }
+        }
+
+        /// <summary>
+        /// Build timestamp (YYMMDDHHMM) read at runtime from the assembly's
+        /// InformationalVersion attribute, which BUILD.bat sets via
+        /// -p:InformationalVersion=3.3.0.YYMMDDHHMM.
+        /// Returns an empty string in IDE / Debug builds where no stamp was injected.
+        /// </summary>
+        public static string BuildStamp
+        {
+            get
+            {
+                var info = Assembly.GetExecutingAssembly()
+                    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                    ?.InformationalVersion;
+                if (string.IsNullOrEmpty(info)) return "";
+                // Strip any +git-hash suffix the SDK may append, then take part[3].
+                var parts = info.Split('+')[0].Split('.');
+                return parts.Length >= 4 ? parts[3] : "";
+            }
+        }
+
+        /// <summary>Full display string: "3.3.0.2606011200" — or just "3.3.0" in IDE builds.</summary>
+        public static string FullVersionString
+        {
+            get
+            {
+                var stamp = BuildStamp;
+                return string.IsNullOrEmpty(stamp) ? CurrentVersion : $"{CurrentVersion}.{stamp}";
+            }
+        }
 
         private static Version ParseVersion(string s)
         {

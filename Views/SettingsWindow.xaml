@@ -1389,6 +1389,10 @@
                                                        FontFamily="{DynamicResource Theme.FontFamily}"
                                                        FontSize="15" FontWeight="Bold"
                                                        Foreground="{DynamicResource TextPrimary}"/>
+                                            <TextBlock x:Name="BuildLabel"
+                                                       FontFamily="{DynamicResource Theme.FontFamily}"
+                                                       FontSize="10" Foreground="{DynamicResource TextMuted}"
+                                                       Margin="0,1,0,0"/>
                                             <TextBlock x:Name="LastCheckedLabel"
                                                        FontFamily="{DynamicResource Theme.FontFamily}"
                                                        FontSize="10" Foreground="{DynamicResource TextMuted}"

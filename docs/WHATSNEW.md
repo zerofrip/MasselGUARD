@@ -1,4 +1,66 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  v3.3.0  —  Camouflaged Koala
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Release codenames
+  • Each version now has a codename shown in the About page, the CLI
+    version output, and the BUILD.bat banner.
+  • v3.3.0 codename: Camouflaged Koala.
+
+About page — version block
+  • Version label now shows the full product name, version, and codename
+    on one line, with build stamp and author below:
+        MasselGUARD v3.3.0  |  Camouflaged Koala
+        build  2606011200
+  • Consistent format across GUI and CLI.
+
+Command-line interface improvements
+  • `version` output now matches the About page format and includes
+    author, website, and cached update status:
+        MasselGUARD v3.3.0  |  Camouflaged Koala
+        build:   2606011200
+        Harold Masselink  |  https://masselink.net
+        Update:  up to date
+  • Added `--list` alias for `list` and `--status` alias for `status`,
+    so both subcommand style and flag style work interchangeably.
+  • `--json` output for `version` now includes an `update_status` field.
+
+Version and build number separated
+  • Version (Major.Minor.Patch) is now static in source — BUILD.bat no longer
+    modifies UpdateChecker.cs, so the working tree stays clean after a build.
+  • The time-based build stamp (YYMMDDHHMM) is injected at compile time via
+    MSBuild's InformationalVersion property and read from the assembly
+    attribute at runtime — no source file is touched.
+  • In IDE / Debug builds without BUILD.bat the build line is hidden.
+
+Bug fixes
+  • DNS badge (🔒 DNS / ⚠ DNS) now disappears immediately when a tunnel
+    is disconnected via the CLI or any external trigger, instead of
+    persisting until the next 1-second status poll tick.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  v3.2.5
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Update available badge
+  • A ↑ button in Accent colour appears in the title bar (before the
+    settings gear) whenever a newer version is available.
+  • Clicking it opens Settings → About directly so you can install
+    in one step.
+  • The badge appears immediately on startup if a newer version was
+    already known from a previous check, and updates after every
+    background or manual check.
+  • Disappears once the running build is up to date.
+
+Bug fixes
+  • Update check frequency (On start / Daily / Weekly / Manual) is now
+    correctly saved when pressing Save in Settings → About.
+    Previously the selection was staged in the draft but never committed
+    to config — it reverted to the previous value after closing Settings.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   v3.2.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

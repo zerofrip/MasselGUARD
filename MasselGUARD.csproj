@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <!-- Exe (console subsystem) so cmd.exe and PowerShell wait for the process
+         to finish in CLI mode.  The GUI launch path immediately calls
+         FreeConsole() — with a prior ShowWindow(SW_HIDE) when Windows created
+         a dedicated console for us — so no console window ever appears. -->
+    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
@@ -22,10 +26,12 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
     <ApplicationIcon>MasselGUARD.ico</ApplicationIcon>
-    <Version>3.0.0</Version>
-    <AssemblyVersion>3.0.0.0</AssemblyVersion>
-    <FileVersion>3.0.0.0</FileVersion>
-    <InformationalVersion>3.0.0</InformationalVersion>
+    <!-- Default versions for IDE / dotnet build without BUILD.bat.
+         BUILD.bat overrides these via -p:Version / -p:InformationalVersion. -->
+    <Version>3.3.0</Version>
+    <AssemblyVersion>3.3.0.0</AssemblyVersion>
+    <FileVersion>3.3.0.0</FileVersion>
+    <InformationalVersion>3.3.0</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
