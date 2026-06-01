@@ -1375,15 +1375,20 @@ namespace MasselGUARD.Views
             var cfg     = _main.ConfigSvc.Config;
             var current = UpdateChecker.CurrentVersionString;
 
-            // Version label — large
+            // Version label — large, with optional codename
             if (VersionLabel != null)
-                VersionLabel.Text = $"v{current}";
+            {
+                var codename = UpdateChecker.Codename;
+                VersionLabel.Text = string.IsNullOrEmpty(codename)
+                    ? $"MasselGUARD v{current}"
+                    : $"MasselGUARD v{current}  |  {codename}";
+            }
 
             // Build stamp — small muted line below the version
             if (BuildLabel != null)
             {
                 var stamp = UpdateChecker.BuildStamp;
-                BuildLabel.Text = string.IsNullOrEmpty(stamp) ? "" : $"Build {stamp}";
+                BuildLabel.Text = string.IsNullOrEmpty(stamp) ? "" : $"build {stamp}";
             }
 
             // Last checked label

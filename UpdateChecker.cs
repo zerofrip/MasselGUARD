@@ -29,6 +29,14 @@ namespace MasselGUARD
         // and read at runtime from the assembly attribute (see BuildStamp below).
         private const string CurrentVersion = "3.3.0";
 
+        // Release codenames — one entry per public version, keyed by Major.Minor.Patch.
+        // Update both here AND in BUILD.bat (set CODENAME=...) when bumping the version.
+        private static readonly System.Collections.Generic.Dictionary<string, string> _codenames =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                { "3.3.0", "Camouflaged Koala" },
+            };
+
         // ── Public: silent background check (called on startup) ──────────────
         public static async Task CheckAsync(AppConfig cfg, Action saveConfig,
                                              Dispatcher dispatcher)
@@ -141,6 +149,26 @@ namespace MasselGUARD
 
         /// <summary>Major.Minor.Patch — use for version comparisons and display.</summary>
         public static string CurrentVersionString => CurrentVersion;
+
+        /// <summary>
+        /// Optional codename for the current version, e.g. "Camouflaged Koala".
+        /// Returns an empty string for versions without a codename.
+        /// </summary>
+        public static string Codename =>
+            _codenames.TryGetValue(CurrentVersion, out var name) ? name : "";
+
+        /// <summary>
+        /// Version + codename for display: "3.3.0 — Camouflaged Koala".
+        /// Falls back to just the version string when no codename is set.
+        /// </summary>
+        public static string VersionWithCodename
+        {
+            get
+            {
+                var cn = Codename;
+                return string.IsNullOrEmpty(cn) ? CurrentVersionString : $"{CurrentVersionString} — {cn}";
+            }
+        }
 
         /// <summary>
         /// Build timestamp (YYMMDDHHMM) read at runtime from the assembly's

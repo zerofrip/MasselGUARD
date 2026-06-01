@@ -106,6 +106,14 @@ namespace MasselGUARD.Services
 
         public void Disable(string tunnelName)
         {
+            // Nothing to do if KillSwitch was never enabled for this tunnel.
+            // Without this guard, Disable logs "[KillSwitch] Disabled" on every
+            // disconnect even for tunnels that never had KillSwitch turned on.
+            lock (_lock)
+            {
+                if (!_active.Contains(tunnelName)) return;
+            }
+
             try
             {
                 RemoveTunnelRules(tunnelName);

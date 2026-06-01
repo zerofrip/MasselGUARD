@@ -5,15 +5,17 @@ setlocal enabledelayedexpansion
 rem ── Build number: YYMMDDHHMM ────────────────────────────────────────────────
 for /f %%a in ('powershell -NoProfile -Command "Get-Date -Format yyMMddHHmm"') do set BUILD_NUM=%%a
 set VERSION=3.3.0
+rem Update CODENAME here AND in UpdateChecker.cs when bumping VERSION.
+set CODENAME=Camouflaged Koala
 
 rem ── Opt out of .NET CLI telemetry ────────────────────────────────────────────
 set DOTNET_CLI_TELEMETRY_OPTOUT=1
 set DOTNET_NOLOGO=1
 echo.
-echo   ----------------------------------------
-echo            MasselGUARD  v%VERSION%
-echo     Harold Masselink  ^|  Claude.ai
-echo   ----------------------------------------
+echo  --------------------------------------------------
+echo  MasselGUARD  v%VERSION%  ^|  %CODENAME%
+echo  Harold Masselink  ^|  https://masselink.net
+echo  --------------------------------------------------
 echo.
 
 rem ── Step 1: verify .NET SDK ──────────────────────────────────────────────────

@@ -281,6 +281,21 @@ namespace MasselGUARD.ViewModels
                 _connectedAt = DateTime.UtcNow;
             else if (!active)
                 _connectedAt = null;
+
+            // Tunnel went inactive externally (e.g. CLI disconnect, service crash).
+            // Clear DNS badge and traffic stats so stale indicators don't linger.
+            if (!active && _isActive)
+            {
+                _dnsStatus = TunnelDll.DnsLeakStatus.Unknown;
+                OnPropertyChanged(nameof(DnsLeakVisibility));
+                OnPropertyChanged(nameof(DnsLeakDisplay));
+                OnPropertyChanged(nameof(DnsLeakColor));
+                _rxBytes = 0;
+                _txBytes = 0;
+                OnPropertyChanged(nameof(TrafficDisplay));
+                OnPropertyChanged(nameof(TrafficVisibility));
+            }
+
             IsActive = active;
             // Always notify StatusText so uptime counter updates every tick
             if (active) OnPropertyChanged(nameof(StatusText));
