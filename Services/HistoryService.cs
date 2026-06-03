@@ -71,6 +71,91 @@ namespace MasselGUARD.Services
             Save();
         }
 
+        // ══════════════════════════════════════════════════════════════════════
+        //  WiFi SSID history — separate file, same service
+        // ══════════════════════════════════════════════════════════════════════
+
+        private static readonly string SsidHistoryPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "MasselGUARD", "ssid_history.json");
+
+        private const int MaxSsidEntries = 500;
+
+        private readonly object _ssidLock = new();
+        private List<MasselGUARD.Models.WifiHistoryEntry> _ssidEntries = new();
+
+        public IReadOnlyList<MasselGUARD.Models.WifiHistoryEntry> SsidEntries
+        {
+            get { lock (_ssidLock) { return _ssidEntries.AsReadOnly(); } }
+        }
+
+        public void LoadSsid()
+        {
+            if (!File.Exists(SsidHistoryPath)) return;
+            try
+            {
+                var list = System.Text.Json.JsonSerializer.Deserialize<
+                    List<MasselGUARD.Models.WifiHistoryEntry>>(
+                    File.ReadAllText(SsidHistoryPath), JsonOpts);
+                if (list != null)
+                    lock (_ssidLock) { _ssidEntries = list; }
+            }
+            catch { }
+        }
+
+        public void SaveSsid()
+        {
+            List<MasselGUARD.Models.WifiHistoryEntry> snap;
+            lock (_ssidLock) { snap = new List<MasselGUARD.Models.WifiHistoryEntry>(_ssidEntries); }
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(SsidHistoryPath)!);
+                File.WriteAllText(SsidHistoryPath,
+                    System.Text.Json.JsonSerializer.Serialize(snap, JsonOpts));
+            }
+            catch { }
+        }
+
+        /// <summary>Record connection to a new SSID (closes any previously-open entry first).</summary>
+        public void RecordSsidConnect(string ssid)
+        {
+            if (string.IsNullOrWhiteSpace(ssid)) return;
+            lock (_ssidLock)
+            {
+                // Already recording this exact SSID — skip duplicate
+                if (_ssidEntries.Any(e => e.DisconnectedAt == null &&
+                        e.Ssid.Equals(ssid, StringComparison.OrdinalIgnoreCase)))
+                    return;
+
+                // Close any other open entry
+                foreach (var e in _ssidEntries.Where(e => e.DisconnectedAt == null))
+                    e.DisconnectedAt = DateTime.UtcNow;
+
+                _ssidEntries.Insert(0, new MasselGUARD.Models.WifiHistoryEntry
+                {
+                    Ssid        = ssid,
+                    ConnectedAt = DateTime.UtcNow,
+                });
+
+                if (_ssidEntries.Count > MaxSsidEntries)
+                    _ssidEntries.RemoveRange(MaxSsidEntries, _ssidEntries.Count - MaxSsidEntries);
+            }
+            System.Threading.ThreadPool.QueueUserWorkItem(_ => SaveSsid());
+        }
+
+        /// <summary>Close the current open SSID entry (WiFi disconnected or SSID changed).</summary>
+        public void RecordSsidDisconnect()
+        {
+            bool changed = false;
+            lock (_ssidLock)
+            {
+                foreach (var e in _ssidEntries.Where(e => e.DisconnectedAt == null))
+                { e.DisconnectedAt = DateTime.UtcNow; changed = true; }
+            }
+            if (changed)
+                System.Threading.ThreadPool.QueueUserWorkItem(_ => SaveSsid());
+        }
+
         // ── Record events ─────────────────────────────────────────────────────
 
         /// <summary>Called when a tunnel successfully connects.</summary>
@@ -101,7 +186,7 @@ namespace MasselGUARD.Services
         }
 
         /// <summary>Called when a tunnel disconnects (clean disconnect).</summary>
-        public void RecordDisconnect(string tunnelName)
+        public void RecordDisconnect(string tunnelName, long sessionRxBytes = 0, long sessionTxBytes = 0)
         {
             lock (_lock)
             {
@@ -109,7 +194,11 @@ namespace MasselGUARD.Services
                     e.TunnelName.Equals(tunnelName, StringComparison.OrdinalIgnoreCase)
                     && e.DisconnectedAt == null);
                 if (entry != null)
-                    entry.DisconnectedAt = DateTime.UtcNow;
+                {
+                    entry.DisconnectedAt  = DateTime.UtcNow;
+                    entry.SessionRxBytes  = sessionRxBytes;
+                    entry.SessionTxBytes  = sessionTxBytes;
+                }
             }
             System.Threading.ThreadPool.QueueUserWorkItem(_ => Save());
         }

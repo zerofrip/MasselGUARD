@@ -35,6 +35,7 @@
                     <RowDefinition Height="0"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
+                    <RowDefinition x:Name="InfoSectionRow" Height="Auto"/>
                     <RowDefinition Height="28"/>
                 </Grid.RowDefinitions>
 
@@ -752,8 +753,146 @@
 
                 </Grid>
 
+                <!-- ── Timeline (Connection History) ─────────────────────── -->
+                <Border Grid.Row="5" x:Name="InfoSectionBorder"
+                        Background="{DynamicResource Surface}"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,1,0,0"
+                        Visibility="Collapsed">
+                    <Grid Margin="14,6,14,6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/> <!-- chart card with TIMELINE header -->
+                            <RowDefinition Height="5"/>    <!-- gap -->
+                            <RowDefinition Height="18"/>   <!-- legend -->
+                        </Grid.RowDefinitions>
+
+                        <!-- Chart card — TIMELINE header bar + canvases -->
+                        <Border Grid.Row="0"
+                                Background="{DynamicResource CardBg}"
+                                BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
+                                CornerRadius="{DynamicResource Theme.CornerRadius}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/> <!-- TIMELINE header bar -->
+                                    <RowDefinition Height="Auto"/> <!-- chart canvases -->
+                                </Grid.RowDefinitions>
+
+                                <!-- TIMELINE header bar — label left, range toggles right -->
+                                <Border Grid.Row="0"
+                                        Background="{DynamicResource Surface}"
+                                        BorderBrush="{DynamicResource BorderColor}"
+                                        BorderThickness="0,0,0,1"
+                                        CornerRadius="{DynamicResource Theme.CornerRadiusTop}">
+                                    <Grid Margin="8,5">
+                                        <TextBlock Text="TIMELINE" FontSize="10"
+                                                   Foreground="{DynamicResource TextMuted}"
+                                                   VerticalAlignment="Center"/>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Center">
+                                            <RadioButton x:Name="Range24hBtn" GroupName="InfoTimeRange"
+                                                         IsChecked="True" Margin="0,0,10,0"
+                                                         Checked="InfoRange_Changed">
+                                                <RadioButton.Style><Style TargetType="RadioButton"><Setter Property="Template"><Setter.Value>
+                                                    <ControlTemplate TargetType="RadioButton">
+                                                        <TextBlock x:Name="tb" Text="24h" FontSize="9" FontFamily="{DynamicResource Theme.FontFamily}" Foreground="{DynamicResource TextMuted}" Cursor="Hand"/>
+                                                        <ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="tb" Property="Foreground" Value="{DynamicResource Accent}"/><Setter TargetName="tb" Property="FontWeight" Value="SemiBold"/></Trigger></ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value></Setter></Style></RadioButton.Style>
+                                            </RadioButton>
+                                            <RadioButton x:Name="Range7dBtn" GroupName="InfoTimeRange"
+                                                         Margin="0,0,10,0" Checked="InfoRange_Changed">
+                                                <RadioButton.Style><Style TargetType="RadioButton"><Setter Property="Template"><Setter.Value>
+                                                    <ControlTemplate TargetType="RadioButton">
+                                                        <TextBlock x:Name="tb" Text="7d" FontSize="9" FontFamily="{DynamicResource Theme.FontFamily}" Foreground="{DynamicResource TextMuted}" Cursor="Hand"/>
+                                                        <ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="tb" Property="Foreground" Value="{DynamicResource Accent}"/><Setter TargetName="tb" Property="FontWeight" Value="SemiBold"/></Trigger></ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value></Setter></Style></RadioButton.Style>
+                                            </RadioButton>
+                                            <RadioButton x:Name="Range31dBtn" GroupName="InfoTimeRange"
+                                                         Checked="InfoRange_Changed">
+                                                <RadioButton.Style><Style TargetType="RadioButton"><Setter Property="Template"><Setter.Value>
+                                                    <ControlTemplate TargetType="RadioButton">
+                                                        <TextBlock x:Name="tb" Text="31d" FontSize="9" FontFamily="{DynamicResource Theme.FontFamily}" Foreground="{DynamicResource TextMuted}" Cursor="Hand"/>
+                                                        <ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="tb" Property="Foreground" Value="{DynamicResource Accent}"/><Setter TargetName="tb" Property="FontWeight" Value="SemiBold"/></Trigger></ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value></Setter></Style></RadioButton.Style>
+                                            </RadioButton>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Chart canvases -->
+                                <Grid Grid.Row="1" Margin="8,6">
+                                    <Canvas x:Name="TimelineCanvas" ClipToBounds="True"
+                                            SizeChanged="TimelineCanvas_SizeChanged"
+                                            MouseMove="TimelineCanvas_MouseMove"
+                                            MouseLeave="TimelineCanvas_MouseLeave"/>
+                                    <Canvas x:Name="ChartOverlayCanvas"
+                                            IsHitTestVisible="False" Panel.ZIndex="10"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- Legend row: tunnel items left, WiFi SSID items right -->
+                        <Grid Grid.Row="2" VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Tunnel legend with scroll markers -->
+                            <Grid Grid.Column="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="TunnelScrollLeft" Grid.Column="0" Content="‹" FontSize="9"
+                                        Padding="1,0" Style="{StaticResource FlatBtn}"
+                                        Foreground="{DynamicResource TextMuted}" Visibility="Collapsed"
+                                        Click="TunnelScrollLeft_Click"/>
+                                <ScrollViewer x:Name="TunnelLegendScroll" Grid.Column="1"
+                                              HorizontalScrollBarVisibility="Hidden"
+                                              VerticalScrollBarVisibility="Disabled"
+                                              ScrollChanged="LegendScroll_Changed"
+                                              PreviewMouseWheel="LegendScroll_Wheel">
+                                    <StackPanel x:Name="LegendPanel" Orientation="Horizontal"/>
+                                </ScrollViewer>
+                                <Button x:Name="TunnelScrollRight" Grid.Column="2" Content="›" FontSize="9"
+                                        Padding="1,0" Style="{StaticResource FlatBtn}"
+                                        Foreground="{DynamicResource TextMuted}" Visibility="Collapsed"
+                                        Click="TunnelScrollRight_Click"/>
+                            </Grid>
+
+                            <!-- WiFi SSID legend, right-aligned -->
+                            <Grid Grid.Column="1" x:Name="WifiLegendContainer" Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto" MaxWidth="280"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="WifiScrollLeft" Grid.Column="0" Content="‹" FontSize="9"
+                                        Padding="1,0" Style="{StaticResource FlatBtn}"
+                                        Foreground="{DynamicResource TextMuted}" Visibility="Collapsed"
+                                        Click="WifiScrollLeft_Click"/>
+                                <ScrollViewer x:Name="WifiLegendScroll" Grid.Column="1"
+                                              HorizontalScrollBarVisibility="Hidden"
+                                              VerticalScrollBarVisibility="Disabled"
+                                              ScrollChanged="LegendScroll_Changed"
+                                              PreviewMouseWheel="LegendScroll_Wheel">
+                                    <StackPanel x:Name="WifiLegendPanel" Orientation="Horizontal"/>
+                                </ScrollViewer>
+                                <Button x:Name="WifiScrollRight" Grid.Column="2" Content="›" FontSize="9"
+                                        Padding="1,0" Style="{StaticResource FlatBtn}"
+                                        Foreground="{DynamicResource TextMuted}" Visibility="Collapsed"
+                                        Click="WifiScrollRight_Click"/>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
+
                 <!-- ── Footer ─────────────────────────────────────────────── -->
-                <Border Grid.Row="5" Background="{DynamicResource Surface}"
+                <Border Grid.Row="6" Background="{DynamicResource Surface}"
                         CornerRadius="0">
                     <Grid Margin="14,0">
                         <TextBlock x:Name="FooterLabel"
@@ -795,7 +934,7 @@
                     </Grid>
                 </Border>
 
-                <ResizeGrip Grid.Row="5" HorizontalAlignment="Right"
+                <ResizeGrip Grid.Row="6" HorizontalAlignment="Right"
                             VerticalAlignment="Bottom" Margin="0,0,2,2" Opacity="0.4"
                             Visibility="{DynamicResource Theme.ShowResizeGrip}"/>
             </Grid>

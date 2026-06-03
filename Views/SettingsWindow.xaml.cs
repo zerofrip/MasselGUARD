@@ -184,6 +184,9 @@ namespace MasselGUARD.Views
             if (ModeCompanion  != null) ModeCompanion.IsChecked  = mode == AppMode.Companion;
             if (ModeMixed      != null) ModeMixed.IsChecked      = mode == AppMode.Mixed;
             if (ShowActivityLogToggle != null) ShowActivityLogToggle.IsChecked = _draft.ShowActivityLog;
+            if (InfoSectionShow       != null) InfoSectionShow.IsChecked       = _draft.InfoSection == Models.InfoSectionMode.Show;
+            if (InfoSectionHide       != null) InfoSectionHide.IsChecked       = _draft.InfoSection == Models.InfoSectionMode.Hide;
+            if (InfoSectionHideNoStore!= null) InfoSectionHideNoStore.IsChecked= _draft.InfoSection == Models.InfoSectionMode.HideAndNoStore;
             _loading = false;
 
             // ── Groups tab controls ───────────────────────────────────────────
@@ -403,6 +406,18 @@ namespace MasselGUARD.Views
             if (_loading) return;
             _draft.ShowActivityLog = ShowActivityLogToggle?.IsChecked == true;
             _main.SetLogPanelVisible(_draft.ShowActivityLog);
+        }
+
+        private void InfoSection_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_loading) return;
+            if (InfoSectionShow?.IsChecked == true)
+                _draft.InfoSection = Models.InfoSectionMode.Show;
+            else if (InfoSectionHide?.IsChecked == true)
+                _draft.InfoSection = Models.InfoSectionMode.Hide;
+            else
+                _draft.InfoSection = Models.InfoSectionMode.HideAndNoStore;
+            _main.ApplyInfoSectionMode();
         }
 
         private void HideWifiRules_Changed(object sender, System.Windows.RoutedEventArgs e)
@@ -1556,8 +1571,10 @@ namespace MasselGUARD.Views
             try
             {
                 await UpdateChecker.UpdateAsync(
-                    release, progress, _main.ConfigSvc.Config, _main.ConfigSvc.Save);
-                // UpdateAsync calls ShutdownApp() on success — execution never reaches here.
+                    release, progress, _main.ConfigSvc.Config, _main.ConfigSvc.Save,
+                    onShutdown: () => System.Windows.Application.Current.Dispatcher.Invoke(
+                        () => ((App)System.Windows.Application.Current).ShutdownApp()));
+                // UpdateAsync calls onShutdown on success — execution never reaches here.
             }
             catch (Exception ex)
             {
@@ -1772,6 +1789,10 @@ namespace MasselGUARD.Views
             _main.ConfigSvc.Config.ShowWifiRulesOnMainWindow = _draft.ShowWifiRulesOnMainWindow;
             _main.ConfigSvc.Config.ShowTunnelRulesColumn = _draft.ShowTunnelRulesColumn;
             _main.ConfigSvc.Config.ShowActivityLog        = _draft.ShowActivityLog;
+            _main.ConfigSvc.Config.InfoSection            = _draft.InfoSection;
+            _main.ConfigSvc.Config.InfoTimeRangeDays      = _draft.InfoTimeRangeDays;
+            _main.ConfigSvc.Config.StoreWifiHistory       = _draft.StoreWifiHistory;
+            _main.ConfigSvc.Config.ShowWifiInChart        = _draft.ShowWifiInChart;
             _main.ConfigSvc.Config.NotificationDurationSeconds = _draft.NotificationDurationSeconds;
             _main.ConfigSvc.Config.UseCustomTheme      = _draft.UseCustomTheme;
             _main.ConfigSvc.Config.SystemThemeMode     = _draft.SystemThemeMode;
@@ -1803,6 +1824,7 @@ namespace MasselGUARD.Views
             _main.RefreshWifiRulesPanel();
             // Apply the correct theme based on the new settings (overrides DoSave preview)
             _main.ApplyThemeFromConfig();
+            _main.ApplyInfoSectionMode();
             Close();
         }
 
@@ -1863,6 +1885,15 @@ namespace MasselGUARD.Views
 
         private void RefreshHistoryTab()
         {
+            // Sync chart option controls (suppress _loading guard — no draft needed for immediate-apply settings)
+            _loading = true;
+            if (ChartRange24h  != null) ChartRange24h.IsChecked  = _draft.InfoTimeRangeDays == 1;
+            if (ChartRange7d   != null) ChartRange7d.IsChecked   = _draft.InfoTimeRangeDays == 7;
+            if (ChartRange31d  != null) ChartRange31d.IsChecked  = _draft.InfoTimeRangeDays == 31;
+            if (StoreWifiHistoryToggle!= null) StoreWifiHistoryToggle.IsChecked  = _draft.StoreWifiHistory;
+            if (ShowWifiInChartToggle != null) ShowWifiInChartToggle.IsChecked   = _draft.ShowWifiInChart;
+            _loading = false;
+
             var entries = _main.HistorySvc.Entries;
             var items   = entries
                 .Select(e => new ViewModels.HistoryEntryViewModel(e))
@@ -1874,6 +1905,35 @@ namespace MasselGUARD.Views
             HistoryCountLabel.Text = total == 0
                 ? Lang.T("HistoryEmpty")
                 : Lang.T("HistoryCount", total);
+        }
+
+        private void StoreWifiHistory_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_loading) return;
+            _draft.StoreWifiHistory = StoreWifiHistoryToggle?.IsChecked == true;
+            _main.ConfigSvc.Config.StoreWifiHistory = _draft.StoreWifiHistory;
+            // If storage is turned off, also disable show
+            if (!_draft.StoreWifiHistory && ShowWifiInChartToggle != null)
+                ShowWifiInChartToggle.IsChecked = false;
+            _main.ApplyInfoSectionMode();
+        }
+
+        private void InfoTimeRange_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_loading) return;
+            _draft.InfoTimeRangeDays =
+                ChartRange31d?.IsChecked == true ? 31 :
+                ChartRange7d?.IsChecked  == true ?  7 : 1;
+            _main.ConfigSvc.Config.InfoTimeRangeDays = _draft.InfoTimeRangeDays;
+            _main.ApplyInfoSectionMode();
+        }
+
+        private void ShowWifiInChart_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_loading) return;
+            _draft.ShowWifiInChart = ShowWifiInChartToggle?.IsChecked == true;
+            _main.ConfigSvc.Config.ShowWifiInChart = _draft.ShowWifiInChart;
+            _main.ApplyInfoSectionMode();
         }
 
         private void ClearHistory_Click(object sender, System.Windows.RoutedEventArgs e)

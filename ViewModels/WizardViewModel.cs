@@ -170,8 +170,7 @@ namespace MasselGUARD.ViewModels
         {
             UpdateStatus = "Checking…";
             OnPropertyChanged(nameof(UpdateStatus));
-            await UpdateChecker.CheckAsync(_config.Config, _config.Save,
-                System.Windows.Application.Current.Dispatcher);
+            await UpdateChecker.CheckAsync(_config.Config, _config.Save);
             UpdateStatus = GetUpdateStatusText();
             OnPropertyChanged(nameof(UpdateStatus));
         }

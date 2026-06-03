@@ -5,7 +5,6 @@ using System.Net.Http;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
-using System.Windows.Threading;
 using MasselGUARD.Models;
 
 namespace MasselGUARD
@@ -27,7 +26,7 @@ namespace MasselGUARD
         // Major.Minor.Patch only — static, never modified by build.
         // The build timestamp is injected at compile time via -p:InformationalVersion
         // and read at runtime from the assembly attribute (see BuildStamp below).
-        private const string CurrentVersion = "3.3.0";
+        private const string CurrentVersion = "3.5.0";
 
         // Release codenames — one entry per public version, keyed by Major.Minor.Patch.
         // Update both here AND in BUILD.bat (set CODENAME=...) when bumping the version.
@@ -35,11 +34,11 @@ namespace MasselGUARD
             new(StringComparer.OrdinalIgnoreCase)
             {
                 { "3.3.0", "Camouflaged Koala" },
+                { "3.5.0", "Hypersonic Quokka"  },
             };
 
         // ── Public: silent background check (called on startup) ──────────────
-        public static async Task CheckAsync(AppConfig cfg, Action saveConfig,
-                                             Dispatcher dispatcher)
+        public static async Task CheckAsync(AppConfig cfg, Action saveConfig)
         {
             try
             {
@@ -65,7 +64,8 @@ namespace MasselGUARD
 
         // ── Public: download + extract + relaunch ────────────────────────────
         public static async Task UpdateAsync(ReleaseInfo release,
-            IProgress<string> progress, AppConfig cfg, Action saveConfig)
+            IProgress<string> progress, AppConfig cfg, Action saveConfig,
+            Action? onShutdown = null)
         {
             if (release.ZipUrl == null)
                 throw new InvalidOperationException("No MasselGUARD.zip asset in release.");
@@ -121,11 +121,9 @@ namespace MasselGUARD
                 UseShellExecute = false
             });
 
-            // Shutdown this instance — the batch will relaunch the new one
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                ((App)System.Windows.Application.Current).ShutdownApp();
-            });
+            // Shutdown this instance — the batch will relaunch the new one.
+            // GUI callers supply onShutdown to run the WPF dispatcher shutdown.
+            onShutdown?.Invoke();
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

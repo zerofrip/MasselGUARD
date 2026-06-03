@@ -9,6 +9,19 @@ namespace MasselGUARD.Models
     public enum AppMode { Standalone, Companion, Mixed }
 
     /// <summary>
+    /// Controls the info/statistics section displayed above the footer.
+    /// </summary>
+    public enum InfoSectionMode
+    {
+        /// <summary>Panel visible; session traffic stored in history.</summary>
+        Show,
+        /// <summary>Panel hidden; traffic data is still stored.</summary>
+        Hide,
+        /// <summary>Panel hidden; no traffic data is recorded.</summary>
+        HideAndNoStore,
+    }
+
+    /// <summary>
     /// Root configuration object serialised to %APPDATA%\MasselGUARD\config.json.
     /// Pure data — no UI, no logic.
     /// </summary>
@@ -93,6 +106,19 @@ namespace MasselGUARD.Models
         /// inline next to each active tunnel's status.
         /// </summary>
         public bool ShowDnsIndicator { get; set; } = true;
+
+        // ── Info / statistics section ─────────────────────────────────────────
+        /// <summary>
+        /// Controls the statistics panel above the footer.
+        /// Show = visible + store traffic; Hide = hidden but store; HideAndNoStore = hidden + no store.
+        /// </summary>
+        public InfoSectionMode InfoSection        { get; set; } = InfoSectionMode.Show;
+        /// <summary>Record WiFi SSID connection timestamps to ssid_history.json.</summary>
+        public bool            StoreWifiHistory  { get; set; } = true;
+        /// <summary>Draw the WiFi SSID bar in the activity chart (requires StoreWifiHistory).</summary>
+        public bool            ShowWifiInChart   { get; set; } = true;
+        /// <summary>1 = last 24 h, 7 = last 7 days.</summary>
+        public int             InfoTimeRangeDays { get; set; } = 1;
 
         // ── Kill switch ───────────────────────────────────────────────────────
         /// <summary>

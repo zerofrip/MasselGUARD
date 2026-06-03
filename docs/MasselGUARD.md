@@ -1,6 +1,6 @@
 # MasselGUARD — How it works
 
-Technical reference for v3.3.0 — Camouflaged Koala. For end-user instructions see [`MANUAL.md`](MANUAL.md).
+Technical reference for v3.5.0 — Hypersonic Quokka. For end-user instructions see [`MANUAL.md`](MANUAL.md).
 
 ---
 

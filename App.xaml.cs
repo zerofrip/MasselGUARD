@@ -399,6 +399,8 @@ namespace MasselGUARD
         {
             IsShuttingDown     = true;
             _trayIcon!.Visible = false;
+            // Close any open SSID entry so the end-time is recorded correctly
+            _mainWindow?.HistorySvc.RecordSsidDisconnect();
             Shutdown();
         }
 

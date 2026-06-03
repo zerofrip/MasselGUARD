@@ -23,5 +23,11 @@ namespace MasselGUARD.Models
         /// "Open network protection", "Default action".
         /// </summary>
         public string    Source         { get; set; } = "Manual";
+
+        /// <summary>Bytes received during this session. Zero when not recorded or HideAndNoStore.</summary>
+        public long SessionRxBytes { get; set; }
+
+        /// <summary>Bytes sent during this session. Zero when not recorded or HideAndNoStore.</summary>
+        public long SessionTxBytes { get; set; }
     }
 }

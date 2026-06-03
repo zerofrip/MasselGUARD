@@ -1,4 +1,30 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  v3.5.0  —  Hypersonic Quokka
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CLI — new commands
+  • connect --all — connect all tunnels at once (optionally scoped with
+    --group <name>).
+  • info <name> — detailed status for one tunnel: type, group, uptime,
+    last connected timestamp and trigger source.
+  • log [n] — last n connection history entries (default 20). Reads from
+    the same history.json as Settings → History — no duplication.
+      --logtype normal     tunnel | when | duration  (default)
+      --logtype extended   adds the trigger source column
+  • check-update — live check against GitHub; prints update status and
+    returns exit code 1 when an update is available (useful for scripting).
+
+CLI — new flags
+  • --group <name> — scope list / connect --all / disconnect-all to one
+    tunnel group.
+  • --active — filter list to connected tunnels only.
+  • --logtype normal|extended — control log detail level (see log above).
+
+CLI — disconnect-all exit code
+  • Returns exit code 2 (already in desired state) when no active tunnels
+    are found, consistent with connect and disconnect.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   v3.3.0  —  Camouflaged Koala
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

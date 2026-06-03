@@ -1,6 +1,6 @@
 # MasselGUARD — User Manual
 
-**Version 3.3.0 — Camouflaged Koala**
+**Version 3.5.0 — Hypersonic Quokka**
 
 ---
 
@@ -31,7 +31,7 @@
 23. [Font override](#23-font-override)
 24. [Multiple languages](#24-multiple-languages)
 25. [Frequently asked questions](#25-frequently-asked-questions)
-26. [Command-line interface (CLI)](#26-command-line-interface-cli)
+26. [Command-line interface (CLI)](#26-command-line-interface-cli) — see also [`CLIManual.md`](CLIManual.md) for the full reference
 
 ---
 
@@ -584,8 +584,12 @@ Must run as Administrator. When invoked from a non-elevated terminal, Windows wi
 | `status` | `--status` | Show active tunnel count and names |
 | `connect <name>` | — | Connect a tunnel by name |
 | `connect --default` | — | Connect the configured default tunnel |
+| `connect --all` | — | Connect all tunnels |
 | `disconnect <name>` | — | Disconnect a tunnel by name |
 | `disconnect-all` | — | Disconnect all active tunnels |
+| `info <name>` | — | Detailed status for one tunnel (type, group, uptime, source) |
+| `log [n]` | — | Last *n* connection history entries (default 20) |
+| `check-update` | `--check-update` | Live update check against GitHub |
 | `version` | `--version`, `-v` | Show version, build, author and update status |
 | `help` | `--help`, `-h` | Show this command reference |
 
@@ -595,6 +599,9 @@ Must run as Administrator. When invoked from a non-elevated terminal, Windows wi
 |---|---|
 | `--json` | Machine-readable JSON output |
 | `--quiet`, `-q` | No output — exit code only (for scripting) |
+| `--group <name>` | Scope `list` / `connect --all` / `disconnect-all` to one group |
+| `--active` | Filter `list` to connected tunnels only |
+| `--logtype normal\|extended` | Log detail level for `log` command (default: `normal`) |
 
 ### Exit codes
 
@@ -603,6 +610,43 @@ Must run as Administrator. When invoked from a non-elevated terminal, Windows wi
 | `0` | Success |
 | `1` | Error (tunnel not found, connect failed, not elevated, etc.) |
 | `2` | Already in desired state (already connected / already disconnected) |
+
+### About `log [n]`
+
+`log` reads from `%APPDATA%\MasselGUARD\history.json` — the **same file** the GUI's Settings → History tab reads. There is no separate CLI log and no duplication.
+
+The GUI's activity log panel (right side of the main window) is **in-memory only** and is not accessible from the CLI. `log` shows connection history only.
+
+```
+MasselGUARD log 5
+  Tunnel                  When               Duration
+  ──────────────────────  ─────────────────  ──────────
+  1.MasselinkVPN-Split    today 09:31        active
+  2.MasselinkVPN-Full     yesterday 14:05    42m 10s
+  1.MasselinkVPN-Split    yesterday 08:12    6h 41m
+```
+
+With `--logtype extended`, a **Source** column is added showing what triggered the connection (e.g. `Rule: HomeNet → Work VPN`, `Manual`, `Auto-reconnect`):
+
+```
+MasselGUARD log 3 --logtype extended
+  Tunnel                  When               Duration    Source
+  ──────────────────────  ─────────────────  ──────────  ──────────────────────────
+  1.MasselinkVPN-Split    today 09:31        active      Rule: HomeNet → Work VPN
+  2.MasselinkVPN-Full     yesterday 14:05    42m 10s     Manual
+```
+
+### About `info <name>`
+
+```
+MasselGUARD info "1.MasselinkVPN-Split-AG"
+
+  Name:    1.MasselinkVPN-Split-AG
+  Type:    Local (tunnel.dll)
+  Group:   Work
+  Status:  ● Connected  1h 23m
+  Source:  Rule: HomeNet → Work VPN  (today 09:31)
+```
 
 ### Version output
 

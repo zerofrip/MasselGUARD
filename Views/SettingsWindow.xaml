@@ -196,6 +196,63 @@
                                 </Grid>
                             </Border>
 
+                            <!-- Info / statistics section -->
+                            <Border Style="{StaticResource SettingsCard}" Margin="0,0,0,4">
+                                <StackPanel>
+                                    <TextBlock Text="Statistics panel"
+                                               FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}"
+                                               Margin="0,0,0,6"/>
+                                    <TextBlock Text="Controls the timeline and live traffic panel shown above the footer."
+                                               FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                               Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"
+                                               Margin="0,0,0,10"/>
+                                    <RadioButton x:Name="InfoSectionShow"
+                                                 GroupName="InfoSection"
+                                                 FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                                 Foreground="{DynamicResource TextPrimary}"
+                                                 Margin="0,0,0,6"
+                                                 Checked="InfoSection_Changed">
+                                        <StackPanel>
+                                            <TextBlock Text="Show" FontFamily="{DynamicResource Theme.FontFamily}"
+                                                       FontSize="11" Foreground="{DynamicResource TextPrimary}"/>
+                                            <TextBlock Text="Panel visible. Session traffic data stored in history."
+                                                       FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                                       Foreground="{DynamicResource TextMuted}" Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton x:Name="InfoSectionHide"
+                                                 GroupName="InfoSection"
+                                                 FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                                 Foreground="{DynamicResource TextPrimary}"
+                                                 Margin="0,0,0,6"
+                                                 Checked="InfoSection_Changed">
+                                        <StackPanel>
+                                            <TextBlock Text="Hide" FontFamily="{DynamicResource Theme.FontFamily}"
+                                                       FontSize="11" Foreground="{DynamicResource TextPrimary}"/>
+                                            <TextBlock Text="Panel hidden. Traffic data is still recorded for later use."
+                                                       FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                                       Foreground="{DynamicResource TextMuted}" Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton x:Name="InfoSectionHideNoStore"
+                                                 GroupName="InfoSection"
+                                                 FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                                 Foreground="{DynamicResource TextPrimary}"
+                                                 Checked="InfoSection_Changed">
+                                        <StackPanel>
+                                            <TextBlock Text="Hide and don't store"
+                                                       FontFamily="{DynamicResource Theme.FontFamily}"
+                                                       FontSize="11" Foreground="{DynamicResource TextPrimary}"/>
+                                            <TextBlock Text="Panel hidden. No traffic data recorded."
+                                                       FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                                       Foreground="{DynamicResource TextMuted}" Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                </StackPanel>
+                            </Border>
+
                         </StackPanel>
 
                         <!-- ══ GROUPS PAGE ══════════════════════════ -->
@@ -1149,6 +1206,96 @@
                         <!-- ══ HISTORY PAGE ════════════════════════════════════ -->
                         <StackPanel x:Name="PageHistory" Visibility="Collapsed">
 
+                            <!-- Activity chart options -->
+                            <TextBlock Text="Activity chart"
+                                       Style="{StaticResource SettingsSectionHeader}"/>
+                            <Border Style="{StaticResource SettingsCard}" Margin="0,0,0,16">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- WiFi SSID tracking -->
+                                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                        <TextBlock Text="WiFi SSID"
+                                                   FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
+                                                   Margin="0,0,0,8"/>
+                                        <!-- Store -->
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="Record connection history"
+                                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                                           Foreground="{DynamicResource TextPrimary}"/>
+                                                <TextBlock Text="Save WiFi SSID timings to ssid_history.json."
+                                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="8"
+                                                           Foreground="{DynamicResource TextMuted}" Margin="0,2,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <ToggleButton Grid.Column="1" x:Name="StoreWifiHistoryToggle"
+                                                          Style="{StaticResource ToggleSwitch}"
+                                                          Checked="StoreWifiHistory_Changed"
+                                                          Unchecked="StoreWifiHistory_Changed"
+                                                          VerticalAlignment="Top" Margin="8,0,0,0"/>
+                                        </Grid>
+                                        <!-- Show -->
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="Show in chart"
+                                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                                           Foreground="{DynamicResource TextPrimary}"/>
+                                                <TextBlock Text="Draw a WiFi bar below the tunnel bar."
+                                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="8"
+                                                           Foreground="{DynamicResource TextMuted}" Margin="0,2,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <ToggleButton Grid.Column="1" x:Name="ShowWifiInChartToggle"
+                                                          Style="{StaticResource ToggleSwitch}"
+                                                          Checked="ShowWifiInChart_Changed"
+                                                          Unchecked="ShowWifiInChart_Changed"
+                                                          VerticalAlignment="Top" Margin="8,0,0,0"/>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <!-- Time range -->
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Time range"
+                                                   FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                                   FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
+                                                   Margin="0,0,0,6"/>
+                                        <RadioButton x:Name="ChartRange24h"
+                                                     GroupName="InfoTimeRange"
+                                                     Content="Last 24 hours"
+                                                     FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                                     Foreground="{DynamicResource TextPrimary}"
+                                                     Margin="0,0,0,4"
+                                                     Checked="InfoTimeRange_Changed"/>
+                                        <RadioButton x:Name="ChartRange7d"
+                                                     GroupName="InfoTimeRange"
+                                                     Content="Last 7 days"
+                                                     FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                                     Foreground="{DynamicResource TextPrimary}"
+                                                     Margin="0,0,0,4"
+                                                     Checked="InfoTimeRange_Changed"/>
+                                        <RadioButton x:Name="ChartRange31d"
+                                                     GroupName="InfoTimeRange"
+                                                     Content="Last 31 days"
+                                                     FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                                     Foreground="{DynamicResource TextPrimary}"
+                                                     Checked="InfoTimeRange_Changed"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
                             <TextBlock Text="{Binding [HistorySectionTitle], Source={x:Static local:Lang.Instance}}"
                                        Style="{StaticResource SettingsSectionHeader}"/>
 
@@ -1167,24 +1314,27 @@
                                             Padding="8,5,8,5">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="3*"/>
-                                                <ColumnDefinition Width="2.5*"/>
-                                                <ColumnDefinition Width="1.5*"/>
-                                                <ColumnDefinition Width="3*"/>
+                                                <ColumnDefinition Width="2.2*"/>
+                                                <ColumnDefinition Width="2.8*"/>
+                                                <ColumnDefinition Width="1.3*"/>
+                                                <ColumnDefinition Width="2.2*"/>
+                                                <ColumnDefinition Width="2*"/>
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0"
                                                        Text="{Binding [HistoryColTunnel], Source={x:Static local:Lang.Instance}}"
                                                        FontFamily="{DynamicResource Theme.FontFamily}"
                                                        FontSize="10" Foreground="{DynamicResource TextMuted}"/>
-                                            <TextBlock Grid.Column="1"
-                                                       Text="{Binding [HistoryColWhen], Source={x:Static local:Lang.Instance}}"
+                                            <TextBlock Grid.Column="1" Text="Start – End"
                                                        FontFamily="{DynamicResource Theme.FontFamily}"
                                                        FontSize="10" Foreground="{DynamicResource TextMuted}"/>
                                             <TextBlock Grid.Column="2"
                                                        Text="{Binding [HistoryColDuration], Source={x:Static local:Lang.Instance}}"
                                                        FontFamily="{DynamicResource Theme.FontFamily}"
                                                        FontSize="10" Foreground="{DynamicResource TextMuted}"/>
-                                            <TextBlock Grid.Column="3"
+                                            <TextBlock Grid.Column="3" Text="Traffic"
+                                                       FontFamily="{DynamicResource Theme.FontFamily}"
+                                                       FontSize="10" Foreground="{DynamicResource TextMuted}"/>
+                                            <TextBlock Grid.Column="4"
                                                        Text="{Binding [HistoryColSource], Source={x:Static local:Lang.Instance}}"
                                                        FontFamily="{DynamicResource Theme.FontFamily}"
                                                        FontSize="10" Foreground="{DynamicResource TextMuted}"/>
@@ -1281,6 +1431,20 @@
                                                                                    FontSize="10"
                                                                                    Foreground="{DynamicResource TextPrimary}"/>
                                                                     </Grid>
+                                                                    <!-- Traffic -->
+                                                                    <Grid Margin="0,0,0,3">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="68"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBlock Grid.Column="0" Text="Traffic"
+                                                                                   FontFamily="{DynamicResource Theme.FontFamily}"
+                                                                                   FontSize="10" Foreground="{DynamicResource TextMuted}"/>
+                                                                        <TextBlock Grid.Column="1"
+                                                                                   Text="{Binding TrafficDisplay}"
+                                                                                   FontFamily="{DynamicResource Theme.FontFamily}"
+                                                                                   FontSize="10" Foreground="{DynamicResource TextPrimary}"/>
+                                                                    </Grid>
                                                                     <!-- Trigger / source -->
                                                                     <Grid>
                                                                         <Grid.ColumnDefinitions>
@@ -1318,10 +1482,11 @@
                                             <DataTemplate>
                                                 <Grid Margin="8,3">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="3*"/>
-                                                        <ColumnDefinition Width="2.5*"/>
-                                                        <ColumnDefinition Width="1.5*"/>
-                                                        <ColumnDefinition Width="3*"/>
+                                                        <ColumnDefinition Width="2.2*"/>
+                                                        <ColumnDefinition Width="2.8*"/>
+                                                        <ColumnDefinition Width="1.3*"/>
+                                                        <ColumnDefinition Width="2.2*"/>
+                                                        <ColumnDefinition Width="2*"/>
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock Grid.Column="0"
                                                                Text="{Binding TunnelName}"
@@ -1331,7 +1496,7 @@
                                                                VerticalAlignment="Center"
                                                                TextTrimming="CharacterEllipsis"/>
                                                     <TextBlock Grid.Column="1"
-                                                               Text="{Binding WhenDisplay}"
+                                                               Text="{Binding TimeRangeDisplay}"
                                                                Foreground="{DynamicResource TextMuted}"
                                                                FontFamily="{DynamicResource Theme.FontFamily}"
                                                                FontSize="{DynamicResource Theme.FontSize.Small}"
@@ -1343,6 +1508,12 @@
                                                                FontSize="{DynamicResource Theme.FontSize.Small}"
                                                                VerticalAlignment="Center"/>
                                                     <TextBlock Grid.Column="3"
+                                                               Text="{Binding TrafficDisplay}"
+                                                               Foreground="{DynamicResource TextMuted}"
+                                                               FontFamily="{DynamicResource Theme.FontFamily}"
+                                                               FontSize="{DynamicResource Theme.FontSize.Small}"
+                                                               VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="4"
                                                                Text="{Binding Source}"
                                                                Foreground="{DynamicResource TextMuted}"
                                                                FontFamily="{DynamicResource Theme.FontFamily}"

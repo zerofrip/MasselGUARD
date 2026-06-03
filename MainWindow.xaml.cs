@@ -112,6 +112,7 @@ namespace MasselGUARD
             ScriptSvc      = new ScriptService();
             HistorySvc     = new Services.HistoryService();
             HistorySvc.Load();
+            HistorySvc.LoadSsid();
             KillSwitchSvc  = new Services.KillSwitchService(LogSvc);
             TunnelSvc      = new TunnelService(LogSvc, ScriptSvc, HistorySvc, KillSwitchSvc);
             WifiSvc        = new WiFiService();
@@ -193,6 +194,9 @@ namespace MasselGUARD
             // Restore saved log-panel visibility (default true)
             if (!ConfigSvc.Config.ShowActivityLog)
                 SetLogPanelVisible(false);
+
+            // Apply info section mode
+            ApplyInfoSectionMode();
 
             // Update footer
             UpdateAdminLabel();
@@ -1125,6 +1129,7 @@ namespace MasselGUARD
             string? serviceSsid = WifiSvc.CurrentSsid;
             UpdateWifiLabel(serviceSsid);
             UpdateTunnelLabel();
+            RefreshInfoSection();
 
             // Only redraw tray icon when active tunnel count actually changes
             int activeCount = _vm.TunnelList.Count(t => t.IsActive);
@@ -1138,10 +1143,23 @@ namespace MasselGUARD
         }
 
         // ── Status bar ────────────────────────────────────────────────────────
+        private string? _lastRecordedSsid = null;
+
         private void OnWifiChanged(string? ssid, bool isOpen)
         {
             Dispatcher.BeginInvoke(() =>
             {
+                // Record SSID history for the activity chart
+                if (!string.Equals(ssid, _lastRecordedSsid, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (ConfigSvc.Config.StoreWifiHistory)
+                    {
+                        if (ssid != null) HistorySvc.RecordSsidConnect(ssid);
+                        else              HistorySvc.RecordSsidDisconnect();
+                    }
+                    _lastRecordedSsid = ssid;
+                }
+
                 UpdateWifiLabel(ssid);
                 _vm.ApplyWifiState(ssid, isOpen);
                 // Give tunnel service a moment to connect, then refresh tunnel label
@@ -2463,7 +2481,9 @@ namespace MasselGUARD
                     var progress = new System.Progress<string>(
                         msg => LogSvc.Info($"[Update] {msg}"));
                     await UpdateChecker.UpdateAsync(
-                        latest, progress, ConfigSvc.Config, ConfigSvc.Save);
+                        latest, progress, ConfigSvc.Config, ConfigSvc.Save,
+                        onShutdown: () => Dispatcher.Invoke(
+                            () => ((App)System.Windows.Application.Current).ShutdownApp()));
                 }
             }
             catch { /* silent — network may not be available */ }
@@ -2913,6 +2933,711 @@ namespace MasselGUARD
                 if (System.IO.File.Exists(p)) return p;
             }
             return null;
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        //  Info / statistics section
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>Tunnels the user has hidden by clicking their legend entry.</summary>
+        private readonly HashSet<string> _hiddenChartTunnels =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Colour assigned to each tunnel name (populated by RenderChart).</summary>
+        private readonly Dictionary<string, System.Windows.Media.Color> _chartColors =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>History entries + period totals per tunnel, cached per render pass.</summary>
+        private record ChartTunnelData(
+            List<Models.ConnectionHistoryEntry> Entries,
+            long PeriodRx, long PeriodTx);
+        private readonly Dictionary<string, ChartTunnelData> _chartData =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Previous Rx/Tx snapshot for live KB/s computation.</summary>
+        private readonly Dictionary<string, (long rx, long tx)> _prevStats =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        // WiFi SSID chart support
+        private readonly HashSet<string> _hiddenWifiSsids =
+            new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, System.Windows.Media.Color> _wifiColors =
+            new(StringComparer.OrdinalIgnoreCase);
+        private static readonly System.Windows.Media.Color[] _wifiPalette =
+        {
+            System.Windows.Media.Color.FromRgb(0xFF, 0xB3, 0x47),  // amber
+            System.Windows.Media.Color.FromRgb(0xFF, 0x6B, 0x6B),  // coral
+            System.Windows.Media.Color.FromRgb(0x4E, 0xCB, 0xC8),  // mint
+            System.Windows.Media.Color.FromRgb(0xBD, 0x8F, 0xFF),  // lavender
+            System.Windows.Media.Color.FromRgb(0xFF, 0x9F, 0xE5),  // pink
+            System.Windows.Media.Color.FromRgb(0x98, 0xE4, 0x7A),  // lime
+        };
+
+        // Fixed colour palette (cycles for more than N tunnels)
+        private static readonly System.Windows.Media.Color[] _chartPalette =
+        {
+            System.Windows.Media.Color.FromRgb(0x4C, 0x9B, 0xE8),  // blue
+            System.Windows.Media.Color.FromRgb(0x4C, 0xD9, 0x7A),  // green
+            System.Windows.Media.Color.FromRgb(0xF0, 0xA3, 0x3A),  // orange
+            System.Windows.Media.Color.FromRgb(0xD9, 0x4C, 0x7A),  // rose
+            System.Windows.Media.Color.FromRgb(0xAA, 0x6E, 0xE8),  // purple
+            System.Windows.Media.Color.FromRgb(0x4C, 0xD9, 0xD9),  // teal
+        };
+
+        /// <summary>Apply the configured InfoSectionMode — called on load and after settings save.</summary>
+        public void ApplyInfoSectionMode()
+        {
+            var mode = ConfigSvc.Config.InfoSection;
+            InfoSectionBorder.Visibility =
+                mode == Models.InfoSectionMode.Show ? Visibility.Visible : Visibility.Collapsed;
+
+            // Sync range toggle buttons with persisted config
+            int rangeDays = ConfigSvc.Config.InfoTimeRangeDays;
+            if (Range24hBtn != null) Range24hBtn.IsChecked  = rangeDays == 1;
+            if (Range7dBtn  != null) Range7dBtn.IsChecked   = rangeDays == 7;
+            if (Range31dBtn != null) Range31dBtn.IsChecked  = rangeDays == 31;
+
+            if (mode == Models.InfoSectionMode.Show)
+                RefreshInfoSection();
+        }
+
+        private void InfoRange_Changed(object sender, RoutedEventArgs e)
+        {
+            ConfigSvc.Config.InfoTimeRangeDays =
+                Range31dBtn?.IsChecked == true ? 31 :
+                Range7dBtn?.IsChecked  == true ?  7 : 1;
+            ConfigSvc.Save();
+            RefreshInfoSection();
+        }
+
+        private void TimelineCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+            => RefreshInfoSection();
+
+        /// <summary>Called each second from OnStatusTick when the info section is visible.</summary>
+        private void RefreshInfoSection()
+        {
+            if (InfoSectionBorder.Visibility != Visibility.Visible) return;
+
+            // Update live KB/s snapshots for active tunnels
+            foreach (var tvm in _vm.TunnelList.Where(t => t.IsActive))
+            {
+                var s = TunnelDll.GetTrafficStats(tvm.Name);
+                if (s.AdapterFound) _prevStats[tvm.Name] = (s.RxBytes, s.TxBytes);
+            }
+
+            RenderChart();
+        }
+
+        // ── Chart rendering ───────────────────────────────────────────────────
+
+        private void RenderChart() => RenderChartCore();
+
+        private void RenderChartCore()
+        {
+            TimelineCanvas.Children.Clear();
+            ChartOverlayCanvas.Children.Clear();
+            LegendPanel.Children.Clear();
+            WifiLegendPanel.Children.Clear();
+            WifiLegendContainer.Visibility = Visibility.Collapsed;
+            _chartData.Clear();
+            _chartColors.Clear();
+
+            double W = TimelineCanvas.ActualWidth;
+            if (W < 20) return;
+
+            var now   = DateTime.Now;
+            var span  = ConfigSvc.Config.InfoTimeRangeDays == 31 ? TimeSpan.FromDays(31) : ConfigSvc.Config.InfoTimeRangeDays == 7 ? TimeSpan.FromDays(7) : TimeSpan.FromHours(24);
+            var start = now - span;
+
+            // Fixed bar geometry
+            const double barH   = 16;
+            const double barGap = 5;
+            const double axisH  = 14;
+
+            // ── Collect tunnels in the window ─────────────────────────────────
+            var allEntries = HistorySvc.Entries
+                .Where(e => e.ConnectedAt >= start || (e.DisconnectedAt ?? now) >= start)
+                .ToList();
+
+            var tunnelNames = allEntries
+                .Select(e => e.TunnelName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n)
+                .ToList();
+
+            foreach (var tvm in _vm.TunnelList.Where(t => t.IsActive))
+                if (!tunnelNames.Contains(tvm.Name, StringComparer.OrdinalIgnoreCase))
+                    tunnelNames.Add(tvm.Name);
+
+            // ── Assign colours + build cached data ───────────────────────────
+            for (int i = 0; i < tunnelNames.Count; i++)
+            {
+                string name   = tunnelNames[i];
+                var    color  = _chartPalette[i % _chartPalette.Length];
+                _chartColors[name] = color;
+
+                var tunnelEntries = allEntries
+                    .Where(e => e.TunnelName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(e => e.ConnectedAt)
+                    .ToList();
+
+                // Synthesise open entry for active tunnel not yet in history
+                var tvm = _vm.TunnelList
+                    .FirstOrDefault(v => v.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (tvm?.IsActive == true && !tunnelEntries.Any(e => e.DisconnectedAt == null))
+                    tunnelEntries.Add(new Models.ConnectionHistoryEntry
+                        { TunnelName = name, ConnectedAt = now, DisconnectedAt = null });
+
+                // Period totals (completed sessions only — active session RxBytes ~ cumulative since adapter up)
+                long periodRx = tunnelEntries.Where(e => e.DisconnectedAt.HasValue).Sum(e => e.SessionRxBytes);
+                long periodTx = tunnelEntries.Where(e => e.DisconnectedAt.HasValue).Sum(e => e.SessionTxBytes);
+                if (tvm?.IsActive == true && _prevStats.TryGetValue(name, out var live))
+                    { periodRx += live.rx; periodTx += live.tx; }
+
+                _chartData[name] = new ChartTunnelData(tunnelEntries, periodRx, periodTx);
+            }
+
+            // ── WiFi entries ──────────────────────────────────────────────────
+            var ssidEntriesInWindow = (ConfigSvc.Config.ShowWifiInChart && ConfigSvc.Config.StoreWifiHistory)
+                ? HistorySvc.SsidEntries
+                    .Where(e => e.ConnectedAt >= start || (e.DisconnectedAt ?? now) >= start)
+                    .OrderBy(e => e.ConnectedAt).ToList()
+                : new List<Models.WifiHistoryEntry>();
+            bool showWifi = ssidEntriesInWindow.Count > 0;
+
+            // Set canvas height so the card auto-sizes
+            double totalH      = barH + (showWifi ? barGap + barH : 0) + axisH;
+            TimelineCanvas.Height = totalH;
+            double wifiBandTop = barH + barGap;
+
+            // ── Coordinate helper ─────────────────────────────────────────────
+            double LocalX(DateTime dt) =>
+                Math.Clamp((dt - start).TotalSeconds / span.TotalSeconds * W, 0, W);
+
+            int n = tunnelNames.Count;
+
+            // ── Vertical grid lines + time-axis labels ────────────────────────
+            var gridBrush = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(28, 128, 128, 128));
+            var tickBrush = (System.Windows.Media.Brush)FindResource("TextMuted");
+
+            double barsH  = barH + (showWifi ? barGap + barH : 0);  // total height of bar area
+            int rangeDays2 = ConfigSvc.Config.InfoTimeRangeDays;
+            int tickCount  = 7;   // 7 ticks works for all three ranges
+            for (int t = 0; t <= tickCount; t++)
+            {
+                double frac = (double)t / tickCount;
+                double x    = Math.Round(frac * W);
+
+                TimelineCanvas.Children.Add(new System.Windows.Shapes.Line
+                {
+                    X1 = x, Y1 = 0, X2 = x, Y2 = barsH,
+                    Stroke = gridBrush, StrokeThickness = 1,
+                });
+
+                var dt  = start + TimeSpan.FromSeconds(span.TotalSeconds * frac);
+                var lbl = rangeDays2 >= 7 ? dt.ToString("ddd\nHH:mm") : dt.ToString("HH:mm");
+                var tb  = new TextBlock
+                {
+                    Text = lbl, FontSize = 8, Foreground = tickBrush,
+                    TextAlignment = TextAlignment.Center, LineHeight = 9,
+                };
+                tb.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                double lblW = tb.DesiredSize.Width;
+                System.Windows.Controls.Canvas.SetLeft(tb, Math.Clamp(x - lblW / 2, 0, Math.Max(0, W - lblW)));
+                System.Windows.Controls.Canvas.SetTop(tb, barsH);
+                TimelineCanvas.Children.Add(tb);
+            }
+
+            var greyDisconn = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(90, 128, 128, 128));
+
+            if (n > 0)
+                DrawTunnelBar(W, barH, start, now, LocalX, greyDisconn);
+
+            if (showWifi)
+                DrawWifiBand(W, wifiBandTop, barH, start, now, LocalX, ssidEntriesInWindow);
+
+            // ── Legend ────────────────────────────────────────────────────────
+            for (int i = 0; i < tunnelNames.Count; i++)
+            {
+                string name   = tunnelNames[i];
+                bool   hidden = _hiddenChartTunnels.Contains(name);
+                var    color  = _chartColors[name];
+
+                var dot = new System.Windows.Shapes.Rectangle
+                {
+                    Width   = 8, Height = 8,
+                    RadiusX = 2, RadiusY = 2,
+                    Fill    = new System.Windows.Media.SolidColorBrush(color),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+
+                var nameTb = new TextBlock
+                {
+                    Text              = name,
+                    FontSize          = 9,
+                    Foreground        = tickBrush,
+                    Margin            = new Thickness(3, 0, 10, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+
+                var item = new StackPanel
+                {
+                    Orientation       = Orientation.Horizontal,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Opacity           = hidden ? 0.35 : 1.0,
+                    Cursor            = System.Windows.Input.Cursors.Hand,
+                    Margin            = new Thickness(0, 0, 2, 0),
+                };
+                item.Children.Add(dot);
+                item.Children.Add(nameTb);
+
+                // Tooltip: period totals
+                if (_chartData.TryGetValue(name, out var cd) && (cd.PeriodRx > 0 || cd.PeriodTx > 0))
+                {
+                    var tip = new StackPanel { Orientation = Orientation.Vertical };
+                    tip.Children.Add(new TextBlock { Text = name, FontSize = 10, FontWeight = FontWeights.SemiBold });
+                    tip.Children.Add(new TextBlock { Text = $"Period total  ↑ {FormatInfoBytes(cd.PeriodTx)}   ↓ {FormatInfoBytes(cd.PeriodRx)}", FontSize = 9 });
+                    item.ToolTip = new ToolTip { Content = tip };
+                }
+
+                // Click toggles visibility
+                var capturedName = name;
+                item.MouseLeftButtonUp += (_, _) =>
+                {
+                    if (_hiddenChartTunnels.Contains(capturedName))
+                        _hiddenChartTunnels.Remove(capturedName);
+                    else
+                        _hiddenChartTunnels.Add(capturedName);
+                    RenderChart();
+                };
+
+                LegendPanel.Children.Add(item);
+            }
+
+            // Update scroll markers after layout pass
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render,
+                new Action(UpdateLegendScrollMarkers));
+        }
+
+        // ── Tunnel bar: all tunnels on one bar, stacked when simultaneous ────
+
+        private void DrawTunnelBar(double W, double barH,
+            DateTime start, DateTime now, Func<DateTime, double> LocalX,
+            System.Windows.Media.Brush greyDisconn)
+        {
+            double midY = barH / 2;
+
+            // Grey dashed baseline (visible in disconnected gaps)
+            TimelineCanvas.Children.Add(new System.Windows.Shapes.Line
+            {
+                X1 = 0, Y1 = midY, X2 = W, Y2 = midY,
+                Stroke = greyDisconn, StrokeThickness = 1,
+                StrokeDashArray = new System.Windows.Media.DoubleCollection { 3, 3 },
+            });
+
+            // Build sorted event list
+            var events = new List<(DateTime t, string name, bool connect)>();
+            foreach (var (name, data) in _chartData)
+            {
+                if (_hiddenChartTunnels.Contains(name)) continue;
+                foreach (var e in data.Entries)
+                {
+                    var cs = e.ConnectedAt < start ? start : e.ConnectedAt;
+                    if (cs >= now) continue;
+                    events.Add((cs, name, true));
+                    var ds = e.DisconnectedAt.HasValue
+                        ? (e.DisconnectedAt.Value > now ? now : e.DisconnectedAt.Value) : now;
+                    if (ds > cs) events.Add((ds, name, false));
+                }
+            }
+            events.Sort((a, b) => a.t.CompareTo(b.t));
+
+            // Walk intervals
+            var      active = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            DateTime cur    = start;
+
+            void DrawInterval(DateTime t1, DateTime t2)
+            {
+                if (active.Count == 0 || t2 <= t1) return;
+                double x1     = LocalX(t1);
+                double x2     = LocalX(t2);
+                double sw     = Math.Max(x2 - x1, 1.5);
+                int    cnt    = active.Count;
+                double sliceH = barH / cnt;
+                int    j      = 0;
+                foreach (var tName in active)
+                {
+                    if (!_chartColors.TryGetValue(tName, out var col)) { j++; continue; }
+                    double ty = j * sliceH;
+
+                    var fillRect = new System.Windows.Shapes.Rectangle
+                    {
+                        Width  = sw, Height = sliceH,
+                        Fill   = new System.Windows.Media.SolidColorBrush(
+                                     System.Windows.Media.Color.FromArgb(55, col.R, col.G, col.B)),
+                    };
+                    System.Windows.Controls.Canvas.SetLeft(fillRect, x1);
+                    System.Windows.Controls.Canvas.SetTop(fillRect, ty);
+                    TimelineCanvas.Children.Add(fillRect);
+
+                    TimelineCanvas.Children.Add(new System.Windows.Shapes.Line
+                    {
+                        X1 = x1, Y1 = ty, X2 = x1 + sw, Y2 = ty,
+                        Stroke = new System.Windows.Media.SolidColorBrush(col),
+                        StrokeThickness = 1.5,
+                    });
+                    j++;
+                }
+            }
+
+            foreach (var ev in events)
+            {
+                DrawInterval(cur, ev.t);
+                cur = ev.t;
+                if (ev.connect) active.Add(ev.name);
+                else            active.Remove(ev.name);
+            }
+            DrawInterval(cur, now);
+        }
+
+        // ── WiFi SSID band ────────────────────────────────────────────────────
+
+        private void DrawWifiBand(double W, double bandTop, double bandH,
+            DateTime start, DateTime now, Func<DateTime, double> LocalX,
+            List<Models.WifiHistoryEntry> entries)
+        {
+            // Separator line above the WiFi band
+            TimelineCanvas.Children.Add(new System.Windows.Shapes.Line
+            {
+                X1 = 0, Y1 = bandTop - 1, X2 = W, Y2 = bandTop - 1,
+                Stroke = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromArgb(35, 128, 128, 128)),
+                StrokeThickness = 1,
+            });
+
+            // Band background
+            var bgRect = new System.Windows.Shapes.Rectangle
+            {
+                Width = W, Height = bandH,
+                Fill  = new System.Windows.Media.SolidColorBrush(
+                            System.Windows.Media.Color.FromArgb(10, 128, 128, 128)),
+            };
+            System.Windows.Controls.Canvas.SetLeft(bgRect, 0);
+            System.Windows.Controls.Canvas.SetTop(bgRect, bandTop);
+            TimelineCanvas.Children.Add(bgRect);
+
+            // Assign colours to new SSIDs (stable: only add, never clear)
+            int nextIdx = _wifiColors.Count;
+            foreach (var ssid in entries.Select(e => e.Ssid).Distinct(StringComparer.OrdinalIgnoreCase))
+                if (!_wifiColors.ContainsKey(ssid))
+                    _wifiColors[ssid] = _wifiPalette[nextIdx++ % _wifiPalette.Length];
+
+            double pxDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+            var    tf    = new System.Windows.Media.Typeface(
+                               (System.Windows.Media.FontFamily)FindResource("Theme.FontFamily"),
+                               FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+
+            foreach (var e in entries)
+            {
+                if (_hiddenWifiSsids.Contains(e.Ssid)) continue;
+
+                var segStart = e.ConnectedAt < start ? start : e.ConnectedAt;
+                var segEnd   = e.DisconnectedAt.HasValue
+                    ? (e.DisconnectedAt.Value > now ? now : e.DisconnectedAt.Value) : now;
+                if (segEnd <= segStart) continue;
+
+                var    color = _wifiColors[e.Ssid];
+                double x1   = LocalX(segStart);
+                double x2   = LocalX(segEnd);
+                double sw   = Math.Max(x2 - x1, 1.5);
+
+                // Filled segment
+                var fillRect = new System.Windows.Shapes.Rectangle
+                {
+                    Width   = sw,
+                    Height  = bandH - 2,
+                    Fill    = new System.Windows.Media.SolidColorBrush(
+                                  System.Windows.Media.Color.FromArgb(210, color.R, color.G, color.B)),
+                    RadiusX = 1, RadiusY = 1,
+                };
+                System.Windows.Controls.Canvas.SetLeft(fillRect, x1);
+                System.Windows.Controls.Canvas.SetTop(fillRect, bandTop + 1);
+                TimelineCanvas.Children.Add(fillRect);
+
+                // Inline SSID label — measure to see if it fits
+                if (sw > 18)
+                {
+                    var ft = new System.Windows.Media.FormattedText(
+                        e.Ssid, System.Globalization.CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight, tf, 7,
+                        System.Windows.Media.Brushes.White, pxDip);
+
+                    double luminance = color.R * 0.299 + color.G * 0.587 + color.B * 0.114;
+                    var textBrush = new System.Windows.Media.SolidColorBrush(
+                        luminance > 140 ? System.Windows.Media.Colors.Black
+                                        : System.Windows.Media.Colors.White);
+
+                    var lbl = new TextBlock
+                    {
+                        Text             = e.Ssid,
+                        FontSize         = 7,
+                        Foreground       = textBrush,
+                        Width            = sw - 4,
+                        TextTrimming     = TextTrimming.CharacterEllipsis,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    System.Windows.Controls.Canvas.SetLeft(lbl, x1 + 2);
+                    System.Windows.Controls.Canvas.SetTop(lbl, bandTop + (bandH - 9) / 2.0);
+                    TimelineCanvas.Children.Add(lbl);
+                }
+            }
+
+            // ── WiFi legend items ─────────────────────────────────────────────
+            var mutedBrush = (System.Windows.Media.Brush)FindResource("TextMuted");
+            var seenSsids  = entries.Select(e => e.Ssid)
+                                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                                    .ToList();
+
+            foreach (var ssid in seenSsids)
+            {
+                bool hidden = _hiddenWifiSsids.Contains(ssid);
+                var  color  = _wifiColors[ssid];
+
+                var dot = new System.Windows.Shapes.Rectangle
+                {
+                    Width = 8, Height = 8, RadiusX = 2, RadiusY = 2,
+                    Fill  = new System.Windows.Media.SolidColorBrush(color),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                var nameTb = new TextBlock
+                {
+                    Text              = ssid,
+                    FontSize          = 9,
+                    Foreground        = mutedBrush,
+                    Margin            = new Thickness(3, 0, 10, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                var item = new StackPanel
+                {
+                    Orientation       = Orientation.Horizontal,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Opacity           = hidden ? 0.35 : 1.0,
+                    Cursor            = System.Windows.Input.Cursors.Hand,
+                    Margin            = new Thickness(0, 0, 2, 0),
+                };
+                item.Children.Add(dot);
+                item.Children.Add(nameTb);
+
+                var capturedSsid = ssid;
+                item.MouseLeftButtonUp += (_, _) =>
+                {
+                    if (_hiddenWifiSsids.Contains(capturedSsid)) _hiddenWifiSsids.Remove(capturedSsid);
+                    else _hiddenWifiSsids.Add(capturedSsid);
+                    RenderChart();
+                };
+
+                WifiLegendPanel.Children.Add(item);
+            }
+
+            WifiLegendContainer.Visibility =
+                seenSsids.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // ── Legend scroll markers ─────────────────────────────────────────────
+
+        private void LegendScroll_Changed(object sender, ScrollChangedEventArgs e)
+            => UpdateLegendScrollMarkers();
+
+        private void LegendScroll_Wheel(object sender,
+            System.Windows.Input.MouseWheelEventArgs e)
+        {
+            if (sender is ScrollViewer sv)
+            {
+                sv.ScrollToHorizontalOffset(sv.HorizontalOffset - e.Delta / 3.0);
+                e.Handled = true;
+            }
+        }
+
+        private void TunnelScrollLeft_Click(object sender, RoutedEventArgs e)
+            => TunnelLegendScroll.ScrollToHorizontalOffset(
+                   Math.Max(0, TunnelLegendScroll.HorizontalOffset - 80));
+        private void TunnelScrollRight_Click(object sender, RoutedEventArgs e)
+            => TunnelLegendScroll.ScrollToHorizontalOffset(
+                   Math.Min(TunnelLegendScroll.ScrollableWidth,
+                            TunnelLegendScroll.HorizontalOffset + 80));
+        private void WifiScrollLeft_Click(object sender, RoutedEventArgs e)
+            => WifiLegendScroll.ScrollToHorizontalOffset(
+                   Math.Max(0, WifiLegendScroll.HorizontalOffset - 80));
+        private void WifiScrollRight_Click(object sender, RoutedEventArgs e)
+            => WifiLegendScroll.ScrollToHorizontalOffset(
+                   Math.Min(WifiLegendScroll.ScrollableWidth,
+                            WifiLegendScroll.HorizontalOffset + 80));
+
+        private void UpdateLegendScrollMarkers()
+        {
+            SyncScrollPair(TunnelLegendScroll, TunnelScrollLeft, TunnelScrollRight);
+            SyncScrollPair(WifiLegendScroll,   WifiScrollLeft,   WifiScrollRight);
+        }
+
+        private static void SyncScrollPair(ScrollViewer sv, Button left, Button right)
+        {
+            if (sv == null) return;
+            left.Visibility  = sv.HorizontalOffset > 0.5
+                ? Visibility.Visible : Visibility.Collapsed;
+            right.Visibility = sv.HorizontalOffset < sv.ScrollableWidth - 0.5
+                ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // ── Chart hover (crosshair + tooltip) ────────────────────────────────
+
+        private void TimelineCanvas_MouseMove(object sender,
+            System.Windows.Input.MouseEventArgs e)
+        {
+            ChartOverlayCanvas.Children.Clear();
+
+            double W = TimelineCanvas.ActualWidth;
+            double H = TimelineCanvas.ActualHeight;
+            if (W < 4 || _chartData.Count == 0) return;
+
+            var    pos = e.GetPosition(TimelineCanvas);
+            double mX  = Math.Clamp(pos.X, 0, W);
+
+            var now    = DateTime.Now;
+            var span   = ConfigSvc.Config.InfoTimeRangeDays == 31 ? TimeSpan.FromDays(31) : ConfigSvc.Config.InfoTimeRangeDays == 7 ? TimeSpan.FromDays(7) : TimeSpan.FromHours(24);
+            var start  = now - span;
+            var hoverT = start + TimeSpan.FromSeconds(mX / W * span.TotalSeconds);
+
+            // Crosshair through the bar area (stop before the axis labels)
+            const double axisH = 14;
+            ChartOverlayCanvas.Children.Add(new System.Windows.Shapes.Line
+            {
+                X1 = mX, Y1 = 0,
+                X2 = mX, Y2 = Math.Max(0, H - axisH),
+                Stroke = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromArgb(120, 255, 255, 255)),
+                StrokeThickness = 1,
+                StrokeDashArray = new System.Windows.Media.DoubleCollection { 2, 2 },
+            });
+
+            // Tooltip box content
+            var tipStack = new StackPanel { Margin = new Thickness(8, 6, 8, 6) };
+
+            // Time header
+            string timeLabel = ConfigSvc.Config.InfoTimeRangeDays >= 7
+                ? hoverT.ToString("ddd dd MMM  HH:mm")
+                : hoverT.ToString("HH:mm");
+            tipStack.Children.Add(new TextBlock
+            {
+                Text       = timeLabel,
+                FontSize   = 9,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (System.Windows.Media.Brush)FindResource("TextPrimary"),
+                Margin     = new Thickness(0, 0, 0, 4),
+            });
+
+            bool isNearNow = (now - hoverT).TotalSeconds < span.TotalSeconds / W * 4;
+
+            foreach (var (name, data) in _chartData)
+            {
+                if (_hiddenChartTunnels.Contains(name)) continue;
+                if (!_chartColors.TryGetValue(name, out var col)) continue;
+
+                // Only show tunnels that were connected at the hover time
+                var session = data.Entries.FirstOrDefault(en =>
+                    en.ConnectedAt <= hoverT &&
+                    (en.DisconnectedAt == null || en.DisconnectedAt >= hoverT));
+                if (session == null) continue;
+
+                var rowStack = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
+
+                // Coloured dot
+                rowStack.Children.Add(new System.Windows.Shapes.Rectangle
+                {
+                    Width = 7, Height = 7, RadiusX = 1, RadiusY = 1,
+                    Fill = new System.Windows.Media.SolidColorBrush(col),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 4, 0),
+                });
+
+                string info;
+                if (session.DisconnectedAt == null)
+                {
+                    // Currently active session
+                    if (isNearNow && _prevStats.TryGetValue(name, out var lv))
+                        info = $"{name}   active   ↑ {FormatInfoBytes(lv.tx)}/s   ↓ {FormatInfoBytes(lv.rx)}/s";
+                    else
+                        info = $"{name}   active since {session.ConnectedAt.ToLocalTime():HH:mm}";
+                }
+                else
+                {
+                    // Historical completed session
+                    var dur = session.DisconnectedAt.Value - session.ConnectedAt;
+                    string durStr = dur.TotalMinutes < 60
+                        ? $"{(int)dur.TotalMinutes}m"
+                        : $"{(int)dur.TotalHours}h {dur.Minutes:D2}m";
+                    string bw = (session.SessionRxBytes > 0 || session.SessionTxBytes > 0)
+                        ? $"   ↑ {FormatInfoBytes(session.SessionTxBytes)}   ↓ {FormatInfoBytes(session.SessionRxBytes)}"
+                        : "";
+                    info = $"{name}   {session.ConnectedAt.ToLocalTime():HH:mm}–{session.DisconnectedAt.Value.ToLocalTime():HH:mm} ({durStr}){bw}";
+                }
+
+                rowStack.Children.Add(new TextBlock
+                {
+                    Text      = info,
+                    FontSize  = 9,
+                    Foreground = (System.Windows.Media.Brush)FindResource("TextMuted"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+                tipStack.Children.Add(rowStack);
+            }
+
+            // Nothing active at this position — only show crosshair, skip tooltip
+            if (tipStack.Children.Count <= 1) return;
+
+            // Build and position the tooltip border
+            var tipBorder = new Border
+            {
+                Background      = (System.Windows.Media.Brush)FindResource("CardBg"),
+                BorderBrush     = (System.Windows.Media.Brush)FindResource("BorderColor"),
+                BorderThickness = new Thickness(1),
+                CornerRadius    = new CornerRadius(4),
+                Child           = tipStack,
+            };
+
+            // Measure to know actual size before placing
+            tipBorder.Measure(new Size(600, 400));
+            double bW = tipBorder.DesiredSize.Width;
+            double bH = tipBorder.DesiredSize.Height;
+
+            // Horizontal: prefer right of cursor; flip left if it would clip
+            double overlayW = ChartOverlayCanvas.ActualWidth;
+            double overlayH = ChartOverlayCanvas.ActualHeight;
+            double xPos = mX + 12;
+            if (xPos + bW > overlayW) xPos = mX - bW - 8;
+            xPos = Math.Clamp(xPos, 0, Math.Max(0, overlayW - bW));
+
+            double yPos = pos.Y + 6;
+            if (yPos + bH > overlayH) yPos = Math.Max(0, overlayH - bH - 2);
+
+            System.Windows.Controls.Canvas.SetLeft(tipBorder, xPos);
+            System.Windows.Controls.Canvas.SetTop(tipBorder, yPos);
+            ChartOverlayCanvas.Children.Add(tipBorder);
+        }
+
+        private void TimelineCanvas_MouseLeave(object sender,
+            System.Windows.Input.MouseEventArgs e)
+            => ChartOverlayCanvas.Children.Clear();
+
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        private static string FormatInfoBytes(long bytes)
+        {
+            if (bytes < 1024)             return $"{bytes} B";
+            if (bytes < 1024 * 1024)      return $"{bytes / 1024.0:F1} KB";
+            if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+            return $"{bytes / (1024.0 * 1024 * 1024):F2} GB";
         }
     }
 }
