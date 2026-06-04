@@ -15,5 +15,8 @@ namespace MasselGUARD.Models
 
         /// <summary>UTC moment the device left this SSID. Null = still connected.</summary>
         public DateTime? DisconnectedAt { get; set; }
+
+        /// <summary>True when the network has no security (open/unencrypted).</summary>
+        public bool IsOpen { get; set; }
     }
 }

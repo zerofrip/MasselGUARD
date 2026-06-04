@@ -46,6 +46,14 @@ MasselGUARD sits in the system tray and watches your WiFi connection. When you j
 - Quick Connect — connect any `.conf` from disk without importing
 - Pre/post scripts at four hook points per tunnel
 
+### History & activity timeline
+- **Connection history** — records every tunnel connect/disconnect with timestamp, duration, and traffic (`tunnel_history.json`)
+- **WiFi history** — records SSID connect/disconnect with timestamps and open/secured status (`wifi_history.json`)
+- **Activity timeline** — canvas above the footer showing tunnel sessions and WiFi rows over the last 24 h / 7 d / 31 d
+- **Hover tooltip** — at any X position shows all tunnels connected and the WiFi SSID active at that time; includes duration, traffic, and 🔒/⚠ security tag
+- **`< >` navigation** — cycles through tunnel sessions; tooltip shows WiFi active at each session's midpoint
+- **Settings — History**: Capture and Show toggles for connections and WiFi are independent; the timeline panel auto-hides when both Show toggles are off
+
 ### Interface
 - Two-panel layout: tunnel list (+ optional WiFi Rules panel) left | Activity Log right
 - **Activity log toggle** — `☰` button in tunnel header opens log; `»` button in log header collapses it; persisted across sessions
@@ -149,4 +157,4 @@ Update `CODENAME` in both `BUILD.bat` and `UpdateChecker.cs` when bumping the ve
 
 ## Security
 
-Tunnel configs encrypted with Windows DPAPI (`CurrentUser` scope). Plaintext temp file during connection is locked to `SYSTEM + Administrators + owner` from byte 0, deleted within ~200 ms.
+Tunnel configs are stored as individual DPAPI-encrypted `.conf.dpapi` files in `%APPDATA%\MasselGUARD\tunnels\` (`CurrentUser` scope). `config.json` never contains key material. Existing inline-encrypted configs are migrated to files automatically on first launch. Plaintext temp file during connection is locked to `SYSTEM + Administrators + owner` from byte 0, deleted within ~200 ms.

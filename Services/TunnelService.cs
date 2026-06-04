@@ -23,6 +23,11 @@ namespace MasselGUARD.Services
     /// </summary>
     public class TunnelService
     {
+        /// <summary>Persistent storage for .conf.dpapi files — one per tunnel.</summary>
+        public static readonly string TunnelStorageDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "MasselGUARD", "tunnels");
+
         private static readonly string TunnelDir = Path.Combine(
             AppContext.BaseDirectory, "tunnels");
         private static readonly string TempDir = Path.Combine(TunnelDir, "temp");
@@ -173,7 +178,7 @@ namespace MasselGUARD.Services
             {
                 RunScript(stored.PreDisconnectScript, "pre-disconnect", stored.Name);
 
-                bool storeTraffic = cfg?.InfoSection != InfoSectionMode.HideAndNoStore;
+                bool storeTraffic = cfg?.StoreConnectionHistory != false;
                 bool ok = stored.Source == "local"
                     ? DisconnectLocal(stored, storeTraffic)
                     : DisconnectWireGuard(stored, storeTraffic);
@@ -308,6 +313,11 @@ namespace MasselGUARD.Services
                 }
                 return File.ReadAllText(stored.Path);
             }
+
+            // Migration: Config stored as plaintext by older GUI versions — use as-is.
+            if (!string.IsNullOrEmpty(stored.Config))
+                return stored.Config;
+
             return "";
         }
 
@@ -325,6 +335,23 @@ namespace MasselGUARD.Services
                 System.Text.Encoding.UTF8.GetBytes(plaintext), null,
                 DataProtectionScope.CurrentUser);
             return Convert.ToBase64String(bytes);
+        }
+
+        /// <summary>
+        /// DPAPI-encrypts <paramref name="plaintext"/> and writes it to
+        /// TunnelStorageDir\{safeName}.conf.dpapi. Returns the full path.
+        /// </summary>
+        public static string SaveConfigToFile(string tunnelName, string plaintext)
+        {
+            Directory.CreateDirectory(TunnelStorageDir);
+            var invalid = System.IO.Path.GetInvalidFileNameChars();
+            var safeName = new string(tunnelName.Select(c => Array.IndexOf(invalid, c) >= 0 ? '_' : c).ToArray());
+            var path = System.IO.Path.Combine(TunnelStorageDir, safeName + ".conf.dpapi");
+            var bytes = ProtectedData.Protect(
+                System.Text.Encoding.UTF8.GetBytes(plaintext), null,
+                DataProtectionScope.CurrentUser);
+            File.WriteAllBytes(path, bytes);
+            return path;
         }
 
         // ── ACL secure write ─────────────────────────────────────────────────

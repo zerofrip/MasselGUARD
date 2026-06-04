@@ -62,6 +62,13 @@ namespace MasselGUARD
 
             // ☰ in the tunnel header — only visible when the log is collapsed
             LogOpenBtn.Visibility = visible ? Visibility.Collapsed : Visibility.Visible;
+
+            // Spread columns evenly across the new section width
+            if (_colInitDone)
+            {
+                ResetTunnelColsToStars();
+                ResetWifiColsToStars();
+            }
         }
 
         // ── Window state (maximize / restore) ────────────────────────────────
@@ -197,6 +204,9 @@ namespace MasselGUARD
 
             // Apply info section mode
             ApplyInfoSectionMode();
+
+            // Restore or initialise column widths
+            InitColumnWidths();
 
             // Update footer
             UpdateAdminLabel();
@@ -699,6 +709,7 @@ namespace MasselGUARD
         private void TunSort_Name  (object s, RoutedEventArgs e) => TunnelSort("Name");
         private void TunSort_Status(object s, RoutedEventArgs e) => TunnelSort("Status");
         private void TunSort_Rules (object s, RoutedEventArgs e) => TunnelSort("Rules");
+        private void TunSort_Action(object s, RoutedEventArgs e) => TunnelSort("Action");
 
         private void TunnelSort(string col)
         {
@@ -906,7 +917,7 @@ namespace MasselGUARD
             var stored = new StoredTunnel
             {
                 Name                = dlg.ResultName ?? "",
-                Config              = dlg.ResultConfig ?? "",
+                Path                = Services.TunnelService.SaveConfigToFile(dlg.ResultName ?? "", dlg.ResultConfig ?? ""),
                 Source              = "local",
                 Group               = dlg.ResultGroup,
                 PreConnectScript    = dlg.ResultPreConnectScript,
@@ -932,7 +943,7 @@ namespace MasselGUARD
             var groupNames = ConfigSvc.Config.TunnelGroups.Select(g => g.Name).ToList();
             var dlg = stored.Source == "local"
                 ? (Window)new Views.TunnelConfigDialog(
-                    stored.Name, stored.Config, stored.Group,
+                    stored.Name, Services.TunnelService.DecryptConfig(stored), stored.Group,
                     stored.PreConnectScript, stored.PostConnectScript,
                     stored.PreDisconnectScript, stored.PostDisconnectScript,
                     isDefault, isOpen, groupNames,
@@ -955,8 +966,16 @@ namespace MasselGUARD
 
             if (dlg is Views.TunnelConfigDialog tcd)
             {
-                stored.Name                 = tcd.ResultName ?? stored.Name;
-                stored.Config               = tcd.ResultConfig ?? stored.Config;
+                var newName    = tcd.ResultName ?? stored.Name;
+                var newConfig  = tcd.ResultConfig ?? Services.TunnelService.DecryptConfig(stored);
+                var oldPath    = stored.Path;
+                stored.Path    = Services.TunnelService.SaveConfigToFile(newName, newConfig);
+                stored.Config  = null;
+                // Delete old file if the name changed (new file already written above).
+                if (!string.IsNullOrEmpty(oldPath) && oldPath != stored.Path &&
+                    System.IO.File.Exists(oldPath))
+                    try { System.IO.File.Delete(oldPath); } catch { }
+                stored.Name    = newName;
                 stored.Group                = tcd.ResultGroup;
                 stored.PreConnectScript     = tcd.ResultPreConnectScript;
                 stored.PostConnectScript    = tcd.ResultPostConnectScript;
@@ -1072,7 +1091,7 @@ namespace MasselGUARD
             string? lastImported = null;
             dlg.TunnelImported += (name, cfg2, src, path) =>
             {
-                var st = new StoredTunnel { Name=name, Config=cfg2, Source=src, Path=path };
+                var st = new StoredTunnel { Name=name, Source=src, Path=path };
                 ConfigSvc.Config.Tunnels.Add(st);
                 lastImported = name;
             };
@@ -1149,19 +1168,7 @@ namespace MasselGUARD
         {
             Dispatcher.BeginInvoke(() =>
             {
-                // Record SSID history for the activity chart
-                if (!string.Equals(ssid, _lastRecordedSsid, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (ConfigSvc.Config.StoreWifiHistory)
-                    {
-                        if (ssid != null) HistorySvc.RecordSsidConnect(ssid);
-                        else              HistorySvc.RecordSsidDisconnect();
-                    }
-                    _lastRecordedSsid = ssid;
-                }
-
-                UpdateWifiLabel(ssid);
-                _vm.ApplyWifiState(ssid, isOpen);
+                ApplyWifiState(ssid, isOpen);
                 // Give tunnel service a moment to connect, then refresh tunnel label
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
                     new Action(() =>
@@ -1172,11 +1179,30 @@ namespace MasselGUARD
             });
         }
 
+        /// <summary>
+        /// Central handler for any WiFi state update — from notification or startup query.
+        /// Records SSID history and updates all UI.
+        /// </summary>
+        private void ApplyWifiState(string? ssid, bool isOpen)
+        {
+            if (!string.Equals(ssid, _lastRecordedSsid, StringComparison.OrdinalIgnoreCase))
+            {
+                if (ConfigSvc.Config.StoreWifiHistory)
+                {
+                    if (ssid != null) HistorySvc.RecordSsidConnect(ssid, isOpen);
+                    else              HistorySvc.RecordSsidDisconnect();
+                }
+                _lastRecordedSsid = ssid;
+            }
+
+            UpdateWifiLabel(ssid);
+            _vm.ApplyWifiState(ssid, isOpen);
+        }
+
         private void TryUpdateWifi()
         {
             var (ssid, isOpen) = WifiSvc.QueryCurrentSsid();
-            UpdateWifiLabel(ssid);
-            _vm.ApplyWifiState(ssid, isOpen);
+            ApplyWifiState(ssid, isOpen);
         }
 
         private void UpdateWifiLabel(string? ssid)
@@ -2958,6 +2984,18 @@ namespace MasselGUARD
         private readonly Dictionary<string, (long rx, long tx)> _prevStats =
             new(StringComparer.OrdinalIgnoreCase);
 
+        // Session navigation
+        private int _navIndex = -1;   // -1 = no active nav selection
+
+        // Chart layout — set by RenderChartCore, read by MouseMove hit-testing
+        private const double ChartBarH    = 16;
+        private const double ChartBarGap  =  5;
+        private const double ChartSsidGap =  2;
+        /// <summary>Y coordinate where the WiFi band starts (0 when no WiFi rendered).</summary>
+        private double _chartWifiBandTop  =  0;
+        /// <summary>Ordered list of SSIDs rendered in the WiFi band (top to bottom).</summary>
+        private List<string> _chartSsids  = new();
+
         // WiFi SSID chart support
         private readonly HashSet<string> _hiddenWifiSsids =
             new(StringComparer.OrdinalIgnoreCase);
@@ -2987,17 +3025,20 @@ namespace MasselGUARD
         /// <summary>Apply the configured InfoSectionMode — called on load and after settings save.</summary>
         public void ApplyInfoSectionMode()
         {
-            var mode = ConfigSvc.Config.InfoSection;
-            InfoSectionBorder.Visibility =
-                mode == Models.InfoSectionMode.Show ? Visibility.Visible : Visibility.Collapsed;
+            var cfg = ConfigSvc.Config;
+
+            // Panel is visible when at least one layer has both capture and display enabled.
+            bool panelVisible = (cfg.ShowTimeline     && cfg.StoreConnectionHistory)
+                             || (cfg.ShowWifiInChart   && cfg.StoreWifiHistory);
+            InfoSectionBorder.Visibility = panelVisible ? Visibility.Visible : Visibility.Collapsed;
 
             // Sync range toggle buttons with persisted config
-            int rangeDays = ConfigSvc.Config.InfoTimeRangeDays;
+            int rangeDays = cfg.InfoTimeRangeDays;
             if (Range24hBtn != null) Range24hBtn.IsChecked  = rangeDays == 1;
             if (Range7dBtn  != null) Range7dBtn.IsChecked   = rangeDays == 7;
             if (Range31dBtn != null) Range31dBtn.IsChecked  = rangeDays == 31;
 
-            if (mode == Models.InfoSectionMode.Show)
+            if (panelVisible)
                 RefreshInfoSection();
         }
 
@@ -3025,7 +3066,21 @@ namespace MasselGUARD
                 if (s.AdapterFound) _prevStats[tvm.Name] = (s.RxBytes, s.TxBytes);
             }
 
+            // Remember nav state so we can restore it after the redraw
+            int savedNavIndex = _navIndex;
             RenderChart();
+
+            // Re-pin the nav tooltip if the user had navigated to a session
+            if (savedNavIndex >= 0)
+            {
+                var entries = GetNavEntries();
+                if (savedNavIndex < entries.Count)
+                {
+                    _navIndex = savedNavIndex;
+                    UpdateNavLabel(_navIndex, entries.Count);
+                    ShowNavTooltip(entries[_navIndex].Name, entries[_navIndex].Entry);
+                }
+            }
         }
 
         // ── Chart rendering ───────────────────────────────────────────────────
@@ -3041,6 +3096,7 @@ namespace MasselGUARD
             WifiLegendContainer.Visibility = Visibility.Collapsed;
             _chartData.Clear();
             _chartColors.Clear();
+            _navIndex = -1;
 
             double W = TimelineCanvas.ActualWidth;
             if (W < 20) return;
@@ -3050,9 +3106,10 @@ namespace MasselGUARD
             var start = now - span;
 
             // Fixed bar geometry
-            const double barH   = 16;
-            const double barGap = 5;
-            const double axisH  = 14;
+            const double barH    = 16;
+            const double barGap  = 5;
+            const double ssidGap = 2;   // gap between per-SSID rows
+            const double axisH   = 20;  // tall enough for two-line "ddd\nHH:mm" labels
 
             // ── Collect tunnels in the window ─────────────────────────────────
             var allEntries = HistorySvc.Entries
@@ -3105,10 +3162,20 @@ namespace MasselGUARD
                 : new List<Models.WifiHistoryEntry>();
             bool showWifi = ssidEntriesInWindow.Count > 0;
 
+            // All SSIDs on one combined row (like the tunnel bar)
+            var distinctSsids = showWifi
+                ? ssidEntriesInWindow.Select(e => e.Ssid)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s).ToList()
+                : new List<string>();
+            double wifiTotalH = showWifi ? barGap + barH : 0;
+
             // Set canvas height so the card auto-sizes
-            double totalH      = barH + (showWifi ? barGap + barH : 0) + axisH;
+            double totalH     = barH + wifiTotalH + axisH;
             TimelineCanvas.Height = totalH;
             double wifiBandTop = barH + barGap;
+
+            // Expose layout to hover hit-testing (single combined row)
+            _chartWifiBandTop = showWifi ? wifiBandTop : double.MaxValue;
 
             // ── Coordinate helper ─────────────────────────────────────────────
             double LocalX(DateTime dt) =>
@@ -3121,7 +3188,7 @@ namespace MasselGUARD
                 System.Windows.Media.Color.FromArgb(28, 128, 128, 128));
             var tickBrush = (System.Windows.Media.Brush)FindResource("TextMuted");
 
-            double barsH  = barH + (showWifi ? barGap + barH : 0);  // total height of bar area
+            double barsH  = barH + wifiTotalH;  // total height of bar area
             int rangeDays2 = ConfigSvc.Config.InfoTimeRangeDays;
             int tickCount  = 7;   // 7 ticks works for all three ranges
             for (int t = 0; t <= tickCount; t++)
@@ -3156,7 +3223,7 @@ namespace MasselGUARD
                 DrawTunnelBar(W, barH, start, now, LocalX, greyDisconn);
 
             if (showWifi)
-                DrawWifiBand(W, wifiBandTop, barH, start, now, LocalX, ssidEntriesInWindow);
+                DrawWifiBand(W, wifiBandTop, barH, ssidGap, start, now, LocalX, ssidEntriesInWindow, distinctSsids);
 
             // ── Legend ────────────────────────────────────────────────────────
             for (int i = 0; i < tunnelNames.Count; i++)
@@ -3219,6 +3286,9 @@ namespace MasselGUARD
             // Update scroll markers after layout pass
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render,
                 new Action(UpdateLegendScrollMarkers));
+
+            // Nav label: show total session count
+            UpdateNavLabel(-1, GetNavEntries().Count);
         }
 
         // ── Tunnel bar: all tunnels on one bar, stacked when simultaneous ────
@@ -3304,11 +3374,11 @@ namespace MasselGUARD
 
         // ── WiFi SSID band ────────────────────────────────────────────────────
 
-        private void DrawWifiBand(double W, double bandTop, double bandH,
+        private void DrawWifiBand(double W, double bandTop, double rowH, double rowGap,
             DateTime start, DateTime now, Func<DateTime, double> LocalX,
-            List<Models.WifiHistoryEntry> entries)
+            List<Models.WifiHistoryEntry> entries, List<string> orderedSsids)
         {
-            // Separator line above the WiFi band
+            // Separator line above the WiFi section
             TimelineCanvas.Children.Add(new System.Windows.Shapes.Line
             {
                 X1 = 0, Y1 = bandTop - 1, X2 = W, Y2 = bandTop - 1,
@@ -3317,10 +3387,16 @@ namespace MasselGUARD
                 StrokeThickness = 1,
             });
 
-            // Band background
+            // Assign colours to new SSIDs (stable: only add, never clear)
+            int nextIdx = _wifiColors.Count;
+            foreach (var ssid in orderedSsids)
+                if (!_wifiColors.ContainsKey(ssid))
+                    _wifiColors[ssid] = _wifiPalette[nextIdx++ % _wifiPalette.Length];
+
+            // Single row background for the whole WiFi band
             var bgRect = new System.Windows.Shapes.Rectangle
             {
-                Width = W, Height = bandH,
+                Width = W, Height = rowH,
                 Fill  = new System.Windows.Media.SolidColorBrush(
                             System.Windows.Media.Color.FromArgb(10, 128, 128, 128)),
             };
@@ -3328,36 +3404,25 @@ namespace MasselGUARD
             System.Windows.Controls.Canvas.SetTop(bgRect, bandTop);
             TimelineCanvas.Children.Add(bgRect);
 
-            // Assign colours to new SSIDs (stable: only add, never clear)
-            int nextIdx = _wifiColors.Count;
-            foreach (var ssid in entries.Select(e => e.Ssid).Distinct(StringComparer.OrdinalIgnoreCase))
-                if (!_wifiColors.ContainsKey(ssid))
-                    _wifiColors[ssid] = _wifiPalette[nextIdx++ % _wifiPalette.Length];
-
-            double pxDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-            var    tf    = new System.Windows.Media.Typeface(
-                               (System.Windows.Media.FontFamily)FindResource("Theme.FontFamily"),
-                               FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-
+            // All SSID segments on the same row, coloured per SSID
             foreach (var e in entries)
             {
                 if (_hiddenWifiSsids.Contains(e.Ssid)) continue;
+                if (!_wifiColors.TryGetValue(e.Ssid, out var color)) continue;
 
                 var segStart = e.ConnectedAt < start ? start : e.ConnectedAt;
                 var segEnd   = e.DisconnectedAt.HasValue
                     ? (e.DisconnectedAt.Value > now ? now : e.DisconnectedAt.Value) : now;
                 if (segEnd <= segStart) continue;
 
-                var    color = _wifiColors[e.Ssid];
-                double x1   = LocalX(segStart);
-                double x2   = LocalX(segEnd);
-                double sw   = Math.Max(x2 - x1, 1.5);
+                double x1 = LocalX(segStart);
+                double x2 = LocalX(segEnd);
+                double sw = Math.Max(x2 - x1, 1.5);
 
-                // Filled segment
                 var fillRect = new System.Windows.Shapes.Rectangle
                 {
                     Width   = sw,
-                    Height  = bandH - 2,
+                    Height  = rowH - 2,
                     Fill    = new System.Windows.Media.SolidColorBrush(
                                   System.Windows.Media.Color.FromArgb(210, color.R, color.G, color.B)),
                     RadiusX = 1, RadiusY = 1,
@@ -3366,41 +3431,32 @@ namespace MasselGUARD
                 System.Windows.Controls.Canvas.SetTop(fillRect, bandTop + 1);
                 TimelineCanvas.Children.Add(fillRect);
 
-                // Inline SSID label — measure to see if it fits
+                // Inline SSID label if the segment is wide enough
                 if (sw > 18)
                 {
-                    var ft = new System.Windows.Media.FormattedText(
-                        e.Ssid, System.Globalization.CultureInfo.CurrentCulture,
-                        FlowDirection.LeftToRight, tf, 7,
-                        System.Windows.Media.Brushes.White, pxDip);
-
                     double luminance = color.R * 0.299 + color.G * 0.587 + color.B * 0.114;
                     var textBrush = new System.Windows.Media.SolidColorBrush(
                         luminance > 140 ? System.Windows.Media.Colors.Black
                                         : System.Windows.Media.Colors.White);
-
                     var lbl = new TextBlock
                     {
-                        Text             = e.Ssid,
-                        FontSize         = 7,
-                        Foreground       = textBrush,
-                        Width            = sw - 4,
-                        TextTrimming     = TextTrimming.CharacterEllipsis,
+                        Text              = e.Ssid,
+                        FontSize          = 7,
+                        Foreground        = textBrush,
+                        Width             = sw - 4,
+                        TextTrimming      = TextTrimming.CharacterEllipsis,
                         VerticalAlignment = VerticalAlignment.Center,
                     };
                     System.Windows.Controls.Canvas.SetLeft(lbl, x1 + 2);
-                    System.Windows.Controls.Canvas.SetTop(lbl, bandTop + (bandH - 9) / 2.0);
+                    System.Windows.Controls.Canvas.SetTop(lbl, bandTop + (rowH - 9) / 2.0);
                     TimelineCanvas.Children.Add(lbl);
                 }
             }
 
             // ── WiFi legend items ─────────────────────────────────────────────
             var mutedBrush = (System.Windows.Media.Brush)FindResource("TextMuted");
-            var seenSsids  = entries.Select(e => e.Ssid)
-                                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                                    .ToList();
 
-            foreach (var ssid in seenSsids)
+            foreach (var ssid in orderedSsids)
             {
                 bool hidden = _hiddenWifiSsids.Contains(ssid);
                 var  color  = _wifiColors[ssid];
@@ -3442,7 +3498,7 @@ namespace MasselGUARD
             }
 
             WifiLegendContainer.Visibility =
-                seenSsids.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+                orderedSsids.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // ── Legend scroll markers ─────────────────────────────────────────────
@@ -3495,11 +3551,16 @@ namespace MasselGUARD
         private void TimelineCanvas_MouseMove(object sender,
             System.Windows.Input.MouseEventArgs e)
         {
+            if (_navIndex >= 0)
+            {
+                _navIndex = -1;
+                UpdateNavLabel(-1, GetNavEntries().Count);
+            }
             ChartOverlayCanvas.Children.Clear();
 
             double W = TimelineCanvas.ActualWidth;
             double H = TimelineCanvas.ActualHeight;
-            if (W < 4 || _chartData.Count == 0) return;
+            if (W < 4) return;
 
             var    pos = e.GetPosition(TimelineCanvas);
             double mX  = Math.Clamp(pos.X, 0, W);
@@ -3521,7 +3582,6 @@ namespace MasselGUARD
                 StrokeDashArray = new System.Windows.Media.DoubleCollection { 2, 2 },
             });
 
-            // Tooltip box content
             var tipStack = new StackPanel { Margin = new Thickness(8, 6, 8, 6) };
 
             // Time header
@@ -3537,6 +3597,7 @@ namespace MasselGUARD
                 Margin     = new Thickness(0, 0, 0, 4),
             });
 
+            // ── Tunnel connections active at this time ────────────────────────
             bool isNearNow = (now - hoverT).TotalSeconds < span.TotalSeconds / W * 4;
 
             foreach (var (name, data) in _chartData)
@@ -3544,15 +3605,12 @@ namespace MasselGUARD
                 if (_hiddenChartTunnels.Contains(name)) continue;
                 if (!_chartColors.TryGetValue(name, out var col)) continue;
 
-                // Only show tunnels that were connected at the hover time
                 var session = data.Entries.FirstOrDefault(en =>
                     en.ConnectedAt <= hoverT &&
                     (en.DisconnectedAt == null || en.DisconnectedAt >= hoverT));
                 if (session == null) continue;
 
                 var rowStack = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
-
-                // Coloured dot
                 rowStack.Children.Add(new System.Windows.Shapes.Rectangle
                 {
                     Width = 7, Height = 7, RadiusX = 1, RadiusY = 1,
@@ -3564,7 +3622,6 @@ namespace MasselGUARD
                 string info;
                 if (session.DisconnectedAt == null)
                 {
-                    // Currently active session
                     if (isNearNow && _prevStats.TryGetValue(name, out var lv))
                         info = $"{name}   active   ↑ {FormatInfoBytes(lv.tx)}/s   ↓ {FormatInfoBytes(lv.rx)}/s";
                     else
@@ -3572,7 +3629,6 @@ namespace MasselGUARD
                 }
                 else
                 {
-                    // Historical completed session
                     var dur = session.DisconnectedAt.Value - session.ConnectedAt;
                     string durStr = dur.TotalMinutes < 60
                         ? $"{(int)dur.TotalMinutes}m"
@@ -3585,18 +3641,20 @@ namespace MasselGUARD
 
                 rowStack.Children.Add(new TextBlock
                 {
-                    Text      = info,
-                    FontSize  = 9,
+                    Text = info, FontSize = 9,
                     Foreground = (System.Windows.Media.Brush)FindResource("TextMuted"),
                     VerticalAlignment = VerticalAlignment.Center,
                 });
                 tipStack.Children.Add(rowStack);
             }
 
-            // Nothing active at this position — only show crosshair, skip tooltip
+            // ── WiFi active at this time ──────────────────────────────────────
+            AddWifiRow(tipStack, hoverT);
+
+            // Nothing to show — only crosshair, no tooltip
             if (tipStack.Children.Count <= 1) return;
 
-            // Build and position the tooltip border
+            // Build and position tooltip
             var tipBorder = new Border
             {
                 Background      = (System.Windows.Media.Brush)FindResource("CardBg"),
@@ -3605,13 +3663,10 @@ namespace MasselGUARD
                 CornerRadius    = new CornerRadius(4),
                 Child           = tipStack,
             };
-
-            // Measure to know actual size before placing
             tipBorder.Measure(new Size(600, 400));
             double bW = tipBorder.DesiredSize.Width;
             double bH = tipBorder.DesiredSize.Height;
 
-            // Horizontal: prefer right of cursor; flip left if it would clip
             double overlayW = ChartOverlayCanvas.ActualWidth;
             double overlayH = ChartOverlayCanvas.ActualHeight;
             double xPos = mX + 12;
@@ -3628,7 +3683,420 @@ namespace MasselGUARD
 
         private void TimelineCanvas_MouseLeave(object sender,
             System.Windows.Input.MouseEventArgs e)
-            => ChartOverlayCanvas.Children.Clear();
+        {
+            // Don't clear if a nav selection is pinned
+            if (_navIndex >= 0) return;
+            ChartOverlayCanvas.Children.Clear();
+        }
+
+        // ── WiFi helpers ──────────────────────────────────────────────────────
+
+        /// <summary>Returns the WiFi entry whose session contains <paramref name="t"/> (local time).</summary>
+        private Models.WifiHistoryEntry? GetSsidAt(DateTime t)
+        {
+            // History is stored in UTC; hoverT is local — align by converting to UTC.
+            var tUtc = t.Kind == DateTimeKind.Utc ? t : t.ToUniversalTime();
+            return HistorySvc.SsidEntries.FirstOrDefault(e =>
+                e.ConnectedAt <= tUtc &&
+                (e.DisconnectedAt == null || e.DisconnectedAt.Value >= tUtc));
+        }
+
+        /// <summary>
+        /// Appends a WiFi/SSID row to <paramref name="tipStack"/> when an SSID
+        /// was active at <paramref name="t"/>. Returns true if a row was added.
+        /// </summary>
+        private bool AddWifiRow(StackPanel tipStack, DateTime t, bool addSeparator = true)
+        {
+            if (!ConfigSvc.Config.StoreWifiHistory) return false;
+            var entry = GetSsidAt(t);
+            if (entry == null) return false;
+
+            if (addSeparator && tipStack.Children.Count > 1)
+            {
+                tipStack.Children.Add(new System.Windows.Shapes.Rectangle
+                {
+                    Height = 1,
+                    Fill   = (System.Windows.Media.Brush)FindResource("BorderColor"),
+                    Margin = new Thickness(0, 4, 0, 4),
+                });
+            }
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
+
+            // WiFi icon dot (steel-blue tint)
+            row.Children.Add(new TextBlock
+            {
+                Text              = "📶",
+                FontSize          = 8,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin            = new Thickness(0, 0, 4, 0),
+            });
+
+            // Build label
+            var connLocal = entry.ConnectedAt.ToLocalTime();
+            string openTag = entry.IsOpen ? "  ⚠ open" : "";
+            string text;
+            if (entry.DisconnectedAt == null)
+            {
+                text = $"{entry.Ssid}{openTag}   since {connLocal:HH:mm}";
+            }
+            else
+            {
+                var discLocal = entry.DisconnectedAt.Value.ToLocalTime();
+                var dur = entry.DisconnectedAt.Value - entry.ConnectedAt;
+                string durStr = dur.TotalMinutes < 60
+                    ? $"{(int)dur.TotalMinutes}m"
+                    : $"{(int)dur.TotalHours}h {dur.Minutes:D2}m";
+                text = $"{entry.Ssid}{openTag}   {connLocal:HH:mm}–{discLocal:HH:mm} ({durStr})";
+            }
+
+            row.Children.Add(new TextBlock
+            {
+                Text              = text,
+                FontSize          = 9,
+                Foreground        = (System.Windows.Media.Brush)FindResource("TextMuted"),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+
+            tipStack.Children.Add(row);
+            return true;
+        }
+
+        // ── Session navigation (◀ ▶ buttons) ────────────────────────────────
+
+        private List<(string Name, Models.ConnectionHistoryEntry Entry)> GetNavEntries()
+        {
+            var now   = DateTime.Now;
+            var span  = ConfigSvc.Config.InfoTimeRangeDays == 31 ? TimeSpan.FromDays(31)
+                      : ConfigSvc.Config.InfoTimeRangeDays == 7  ? TimeSpan.FromDays(7)
+                      : TimeSpan.FromHours(24);
+            var start = now - span;
+
+            return _chartData
+                .Where(kv => !_hiddenChartTunnels.Contains(kv.Key))
+                .SelectMany(kv => kv.Value.Entries.Select(e => (kv.Key, e)))
+                .Where(t => t.e.ConnectedAt >= start || (t.e.DisconnectedAt ?? now) >= start)
+                .OrderBy(t => t.e.ConnectedAt)
+                .ToList();
+        }
+
+        private void UpdateNavLabel(int index, int total)
+        {
+            if (ChartNavLabel == null) return;
+            ChartNavLabel.Text = index < 0 ? total.ToString() : $"{index + 1}/{total}";
+        }
+
+        private void ChartPrev_Click(object sender, RoutedEventArgs e)
+        {
+            var entries = GetNavEntries();
+            if (entries.Count == 0) return;
+            _navIndex = _navIndex <= 0 ? entries.Count - 1 : _navIndex - 1;
+            UpdateNavLabel(_navIndex, entries.Count);
+            ShowNavTooltip(entries[_navIndex].Name, entries[_navIndex].Entry);
+        }
+
+        private void ChartNext_Click(object sender, RoutedEventArgs e)
+        {
+            var entries = GetNavEntries();
+            if (entries.Count == 0) return;
+            _navIndex = _navIndex < 0 || _navIndex >= entries.Count - 1 ? 0 : _navIndex + 1;
+            UpdateNavLabel(_navIndex, entries.Count);
+            ShowNavTooltip(entries[_navIndex].Name, entries[_navIndex].Entry);
+        }
+
+        private void ShowNavTooltip(string name, Models.ConnectionHistoryEntry entry)
+        {
+            ChartOverlayCanvas.Children.Clear();
+
+            double W = TimelineCanvas.ActualWidth;
+            double H = TimelineCanvas.ActualHeight;
+            if (W < 4) return;
+
+            var now   = DateTime.Now;
+            var span  = ConfigSvc.Config.InfoTimeRangeDays == 31 ? TimeSpan.FromDays(31)
+                      : ConfigSvc.Config.InfoTimeRangeDays == 7  ? TimeSpan.FromDays(7)
+                      : TimeSpan.FromHours(24);
+            var start = now - span;
+
+            // Centre the crosshair on the session's midpoint (clamped to window)
+            var segStart = entry.ConnectedAt < start ? start : entry.ConnectedAt;
+            var segEnd   = entry.DisconnectedAt.HasValue
+                ? (entry.DisconnectedAt.Value > now ? now : entry.DisconnectedAt.Value)
+                : now;
+            double x1 = Math.Clamp((segStart - start).TotalSeconds / span.TotalSeconds * W, 0, W);
+            double x2 = Math.Clamp((segEnd   - start).TotalSeconds / span.TotalSeconds * W, 0, W);
+            double mX  = (x1 + x2) / 2.0;
+
+            const double axisH = 20;
+            // Crosshair
+            ChartOverlayCanvas.Children.Add(new System.Windows.Shapes.Line
+            {
+                X1 = mX, Y1 = 0,
+                X2 = mX, Y2 = Math.Max(0, H - axisH),
+                Stroke = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromArgb(180, 255, 255, 255)),
+                StrokeThickness = 1,
+                StrokeDashArray = new System.Windows.Media.DoubleCollection { 2, 2 },
+            });
+            // Highlight bar span
+            if (x2 > x1)
+            {
+                ChartOverlayCanvas.Children.Add(new System.Windows.Shapes.Rectangle
+                {
+                    Width  = x2 - x1,
+                    Height = Math.Max(0, H - axisH),
+                    Fill   = new System.Windows.Media.SolidColorBrush(
+                                 System.Windows.Media.Color.FromArgb(30, 255, 255, 255)),
+                });
+                System.Windows.Controls.Canvas.SetLeft(
+                    (System.Windows.UIElement)ChartOverlayCanvas.Children[ChartOverlayCanvas.Children.Count - 1], x1);
+            }
+
+            // Tooltip
+            var tipStack = new StackPanel { Margin = new Thickness(8, 6, 8, 6) };
+
+            // Time header
+            var hoverT = (segStart + TimeSpan.FromSeconds((segEnd - segStart).TotalSeconds / 2));
+            string timeLabel = ConfigSvc.Config.InfoTimeRangeDays >= 7
+                ? hoverT.ToString("ddd dd MMM  HH:mm")
+                : hoverT.ToString("HH:mm");
+            tipStack.Children.Add(new TextBlock
+            {
+                Text       = timeLabel,
+                FontSize   = 9,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (System.Windows.Media.Brush)FindResource("TextPrimary"),
+                Margin     = new Thickness(0, 0, 0, 4),
+            });
+
+            if (_chartColors.TryGetValue(name, out var col))
+            {
+                var rowStack = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
+                rowStack.Children.Add(new System.Windows.Shapes.Rectangle
+                {
+                    Width = 7, Height = 7, RadiusX = 1, RadiusY = 1,
+                    Fill = new System.Windows.Media.SolidColorBrush(col),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 4, 0),
+                });
+
+                string info;
+                if (entry.DisconnectedAt == null)
+                {
+                    info = $"{name}   active since {entry.ConnectedAt.ToLocalTime():HH:mm}";
+                }
+                else
+                {
+                    var dur = entry.DisconnectedAt.Value - entry.ConnectedAt;
+                    string durStr = dur.TotalMinutes < 60
+                        ? $"{(int)dur.TotalMinutes}m"
+                        : $"{(int)dur.TotalHours}h {dur.Minutes:D2}m";
+                    string bw = (entry.SessionRxBytes > 0 || entry.SessionTxBytes > 0)
+                        ? $"   ↑ {FormatInfoBytes(entry.SessionTxBytes)}   ↓ {FormatInfoBytes(entry.SessionRxBytes)}"
+                        : "";
+                    info = $"{name}   {entry.ConnectedAt.ToLocalTime():HH:mm}–{entry.DisconnectedAt.Value.ToLocalTime():HH:mm} ({durStr}){bw}";
+                }
+
+                rowStack.Children.Add(new TextBlock
+                {
+                    Text = info, FontSize = 9,
+                    Foreground = (System.Windows.Media.Brush)FindResource("TextMuted"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+                tipStack.Children.Add(rowStack);
+            }
+
+            // WiFi row at the session's midpoint time (hoverT is UTC-based here)
+            AddWifiRow(tipStack, hoverT);
+
+            var tipBorder = new Border
+            {
+                Background      = (System.Windows.Media.Brush)FindResource("CardBg"),
+                BorderBrush     = (System.Windows.Media.Brush)FindResource("BorderColor"),
+                BorderThickness = new Thickness(1),
+                CornerRadius    = new CornerRadius(4),
+                Child           = tipStack,
+            };
+            tipBorder.Measure(new Size(600, 400));
+            double bW = tipBorder.DesiredSize.Width;
+            double bH = tipBorder.DesiredSize.Height;
+
+            double overlayW = ChartOverlayCanvas.ActualWidth;
+            double overlayH = ChartOverlayCanvas.ActualHeight;
+            double xPos = mX + 12;
+            if (xPos + bW > overlayW) xPos = mX - bW - 8;
+            xPos = Math.Clamp(xPos, 0, Math.Max(0, overlayW - bW));
+            double yPos = Math.Max(0, overlayH / 2 - bH / 2);
+
+            System.Windows.Controls.Canvas.SetLeft(tipBorder, xPos);
+            System.Windows.Controls.Canvas.SetTop(tipBorder, yPos);
+            ChartOverlayCanvas.Children.Add(tipBorder);
+        }
+
+        // ── Column resize ─────────────────────────────────────────────────────
+
+        private System.Windows.Threading.DispatcherTimer? _colSaveTimer;
+        private bool _colInitDone;
+
+        private void InitColumnWidths()
+        {
+            var cfg = ConfigSvc.Config;
+
+            // Discard saved tunnel widths that look wrong (Rules > 100px = auto-saved star proportion)
+            if (cfg.TunColRulesW > 100)
+            {
+                cfg.TunColNameW = cfg.TunColStatusW = cfg.TunColRulesW = cfg.TunColActionW = 0;
+                ConfigSvc.Save();
+            }
+
+            if (cfg.TunColNameW > 0)
+            {
+                TunColDef0.Width = new GridLength(cfg.TunColNameW);
+                TunColDef1.Width = new GridLength(cfg.TunColStatusW);
+                TunColDef2.Width = new GridLength(cfg.TunColRulesW);
+                TunColDef3.Width = new GridLength(cfg.TunColActionW);
+                _vm.TunCol0W = cfg.TunColNameW;
+                _vm.TunCol1W = cfg.TunColStatusW;
+                _vm.TunCol2W = cfg.TunColRulesW;
+                _vm.TunCol3W = cfg.TunColActionW;
+            }
+            if (cfg.WifiColNameW > 0)
+            {
+                WifColDef0.Width = new GridLength(cfg.WifiColNameW);
+                WifColDef1.Width = new GridLength(cfg.WifiColSsidW);
+                WifColDef2.Width = new GridLength(cfg.WifiColActionW);
+                WifColDef3.Width = new GridLength(cfg.WifiColCountW);
+                WifColDef4.Width = new GridLength(cfg.WifiColTunnelW);
+                _vm.WifCol0W = cfg.WifiColNameW;
+                _vm.WifCol1W = cfg.WifiColSsidW;
+                _vm.WifCol2W = cfg.WifiColActionW;
+                _vm.WifCol3W = cfg.WifiColCountW;
+                _vm.WifCol4W = cfg.WifiColTunnelW;
+            }
+            _colInitDone = true;
+        }
+
+        private void TunnelColGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            double total = e.NewSize.Width;
+            double min   = Math.Floor(total * 0.10);
+            TunColDef0.MinWidth = min; TunColDef1.MinWidth = min;
+            TunColDef2.MinWidth = min; TunColDef3.MinWidth = min;
+            // MaxWidth: no column can grow past total minus the other columns' minimums
+            TunColDef0.MaxWidth = total - min - min - min;
+            TunColDef1.MaxWidth = total - min - min - min;
+            TunColDef2.MaxWidth = total - min - min - min;
+            TunColDef3.MaxWidth = total - min - min - min;
+            if (TunColDef0.ActualWidth > 0)
+            {
+                if (TunColDef0.ActualWidth < min) TunColDef0.Width = new GridLength(min);
+                if (TunColDef1.ActualWidth < min) TunColDef1.Width = new GridLength(min);
+                if (TunColDef2.ActualWidth < min) TunColDef2.Width = new GridLength(min);
+                if (TunColDef3.ActualWidth < min) TunColDef3.Width = new GridLength(min);
+            }
+        }
+
+        private void WifiColGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            double total = e.NewSize.Width;
+            double min   = Math.Floor(total * 0.10);
+            WifColDef0.MinWidth = min; WifColDef1.MinWidth = min;
+            WifColDef2.MinWidth = min; WifColDef3.MinWidth = 30; WifColDef4.MinWidth = min;
+            WifColDef0.MaxWidth = total - min - min - 30 - min;
+            WifColDef1.MaxWidth = total - min - min - 30 - min;
+            WifColDef2.MaxWidth = total - min - min - 30 - min;
+            WifColDef4.MaxWidth = total - min - min - min - 30;
+            if (WifColDef0.ActualWidth > 0)
+            {
+                if (WifColDef0.ActualWidth < min) WifColDef0.Width = new GridLength(min);
+                if (WifColDef1.ActualWidth < min) WifColDef1.Width = new GridLength(min);
+                if (WifColDef2.ActualWidth < min) WifColDef2.Width = new GridLength(min);
+                if (WifColDef4.ActualWidth < min) WifColDef4.Width = new GridLength(min);
+            }
+        }
+
+        // Reset star columns to proportional widths so they spread evenly.
+        private void ResetTunnelColsToStars()
+        {
+            TunColDef0.Width = new GridLength(3,   GridUnitType.Star);
+            TunColDef1.Width = new GridLength(3.2, GridUnitType.Star);
+            // TunColDef2 stays fixed 50px
+            TunColDef3.Width = new GridLength(1.5, GridUnitType.Star);
+        }
+
+        private void ResetWifiColsToStars()
+        {
+            WifColDef0.Width = new GridLength(3,   GridUnitType.Star);
+            WifColDef1.Width = new GridLength(2,   GridUnitType.Star);
+            WifColDef2.Width = new GridLength(1.5, GridUnitType.Star);
+            // WifColDef3 stays fixed 40px
+            WifColDef4.Width = new GridLength(2,   GridUnitType.Star);
+        }
+
+        // Fires continuously during layout; only act when widths have settled.
+        private void TunnelColGrid_LayoutUpdated(object sender, EventArgs e)
+        {
+            if (!_colInitDone) return;
+            double w0 = TunColDef0.ActualWidth, w1 = TunColDef1.ActualWidth,
+                   w2 = TunColDef2.ActualWidth, w3 = TunColDef3.ActualWidth;
+            if (w0 < 1) return;
+            if (Math.Abs(w0 - _vm.TunCol0W) < 0.5 && Math.Abs(w1 - _vm.TunCol1W) < 0.5 &&
+                Math.Abs(w2 - _vm.TunCol2W) < 0.5 && Math.Abs(w3 - _vm.TunCol3W) < 0.5) return;
+            _vm.TunCol0W = Math.Max(TunColDef0.MinWidth, w0);
+            _vm.TunCol1W = Math.Max(TunColDef1.MinWidth, w1);
+            _vm.TunCol2W = Math.Max(TunColDef2.MinWidth, w2);
+            _vm.TunCol3W = Math.Max(TunColDef3.MinWidth, w3);
+        }
+
+        private void WifiColGrid_LayoutUpdated(object sender, EventArgs e)
+        {
+            if (!_colInitDone) return;
+            double w0 = WifColDef0.ActualWidth, w1 = WifColDef1.ActualWidth,
+                   w2 = WifColDef2.ActualWidth, w3 = WifColDef3.ActualWidth, w4 = WifColDef4.ActualWidth;
+            if (w0 < 1) return;
+            if (Math.Abs(w0 - _vm.WifCol0W) < 0.5 && Math.Abs(w1 - _vm.WifCol1W) < 0.5 &&
+                Math.Abs(w2 - _vm.WifCol2W) < 0.5 && Math.Abs(w3 - _vm.WifCol3W) < 0.5 &&
+                Math.Abs(w4 - _vm.WifCol4W) < 0.5) return;
+            _vm.WifCol0W = Math.Max(WifColDef0.MinWidth, w0);
+            _vm.WifCol1W = Math.Max(WifColDef1.MinWidth, w1);
+            _vm.WifCol2W = Math.Max(WifColDef2.MinWidth, w2);
+            _vm.WifCol3W = Math.Max(WifColDef3.MinWidth, w3);
+            _vm.WifCol4W = Math.Max(WifColDef4.MinWidth, w4);
+        }
+
+        // ColSplitter_MouseUp fires when a drag ends — immediate save (skip debounce).
+        private void ColSplitter_MouseUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            _colSaveTimer?.Stop();
+            SaveColumnWidths();
+        }
+
+        private void ScheduleColSave()
+        {
+            if (_colSaveTimer == null)
+            {
+                _colSaveTimer = new System.Windows.Threading.DispatcherTimer
+                    { Interval = TimeSpan.FromMilliseconds(600) };
+                _colSaveTimer.Tick += (_, _) => { _colSaveTimer.Stop(); SaveColumnWidths(); };
+            }
+            _colSaveTimer.Stop();
+            _colSaveTimer.Start();
+        }
+
+        private void SaveColumnWidths()
+        {
+            var cfg = ConfigSvc.Config;
+            cfg.TunColNameW    = _vm.TunCol0W;
+            cfg.TunColStatusW  = _vm.TunCol1W;
+            cfg.TunColRulesW   = _vm.TunCol2W;
+            cfg.TunColActionW  = _vm.TunCol3W;
+            cfg.WifiColNameW   = _vm.WifCol0W;
+            cfg.WifiColSsidW   = _vm.WifCol1W;
+            cfg.WifiColActionW = _vm.WifCol2W;
+            cfg.WifiColCountW  = _vm.WifCol3W;
+            cfg.WifiColTunnelW = _vm.WifCol4W;
+            ConfigSvc.Save();
+        }
 
         // ── Helpers ───────────────────────────────────────────────────────────
 

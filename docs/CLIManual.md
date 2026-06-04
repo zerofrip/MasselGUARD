@@ -318,7 +318,7 @@ MasselGUARD info "1.HomeVPN" --json
 
 ### log
 
-Shows recent connection history. Reads from `%APPDATA%\MasselGUARD\history.json` — the **same file** that Settings → History shows in the GUI. No duplication; one source of truth.
+Shows recent connection history. Reads from `%APPDATA%\MasselGUARD\tunnel_history.json` — the **same file** that Settings → History shows in the GUI. No duplication; one source of truth.
 
 > **Note:** The GUI's activity log panel (debug entries, timing, script output) is in-memory only and is not accessible from the CLI. `log` shows connection history only.
 
@@ -412,7 +412,7 @@ MasselGUARD import <file>
 | `--group <name>` | Assign the tunnel to a group |
 | `--unsecure` | Store without DPAPI encryption (copies plaintext to the tunnels folder) |
 
-**Default behaviour (secure):** The config is encrypted with Windows DPAPI (`CurrentUser` scope) and stored inline in `config.json`. The original file is not moved or deleted.
+**Default behaviour (secure):** The config is DPAPI-encrypted (`CurrentUser` scope) and written to `%APPDATA%\MasselGUARD\tunnels\<name>.conf.dpapi`. Only the file path is stored in `config.json` — no key material. The original file is not moved or deleted.
 
 **`--unsecure` behaviour:** A copy of the plaintext `.conf` is written to `<exedir>\tunnels\<name>.conf`. A warning is printed. Useful when the config must be readable on disk (e.g. shared admin tools), but not recommended.
 

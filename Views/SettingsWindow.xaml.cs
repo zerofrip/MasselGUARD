@@ -183,11 +183,11 @@ namespace MasselGUARD.Views
             if (ModeStandalone != null) ModeStandalone.IsChecked = mode == AppMode.Standalone;
             if (ModeCompanion  != null) ModeCompanion.IsChecked  = mode == AppMode.Companion;
             if (ModeMixed      != null) ModeMixed.IsChecked      = mode == AppMode.Mixed;
-            if (ShowActivityLogToggle != null) ShowActivityLogToggle.IsChecked = _draft.ShowActivityLog;
-            if (InfoSectionShow       != null) InfoSectionShow.IsChecked       = _draft.InfoSection == Models.InfoSectionMode.Show;
-            if (InfoSectionHide       != null) InfoSectionHide.IsChecked       = _draft.InfoSection == Models.InfoSectionMode.Hide;
-            if (InfoSectionHideNoStore!= null) InfoSectionHideNoStore.IsChecked= _draft.InfoSection == Models.InfoSectionMode.HideAndNoStore;
+            if (ShowActivityLogToggle    != null) ShowActivityLogToggle.IsChecked    = _draft.ShowActivityLog;
+            if (ShowTimelineToggle       != null) ShowTimelineToggle.IsChecked       = _draft.ShowTimeline;
+            if (StoreConnectionHistoryToggle != null) StoreConnectionHistoryToggle.IsChecked = _draft.StoreConnectionHistory;
             _loading = false;
+            UpdateTimelineShowEnabled();
 
             // ── Groups tab controls ───────────────────────────────────────────
             _loading = true;
@@ -408,16 +408,29 @@ namespace MasselGUARD.Views
             _main.SetLogPanelVisible(_draft.ShowActivityLog);
         }
 
-        private void InfoSection_Changed(object sender, System.Windows.RoutedEventArgs e)
+        private void ShowTimeline_Changed(object sender, System.Windows.RoutedEventArgs e)
         {
             if (_loading) return;
-            if (InfoSectionShow?.IsChecked == true)
-                _draft.InfoSection = Models.InfoSectionMode.Show;
-            else if (InfoSectionHide?.IsChecked == true)
-                _draft.InfoSection = Models.InfoSectionMode.Hide;
-            else
-                _draft.InfoSection = Models.InfoSectionMode.HideAndNoStore;
+            _draft.ShowTimeline = ShowTimelineToggle?.IsChecked == true;
+            _main.ConfigSvc.Config.ShowTimeline = _draft.ShowTimeline;
             _main.ApplyInfoSectionMode();
+        }
+
+        private void StoreConnectionHistory_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_loading) return;
+            _draft.StoreConnectionHistory = StoreConnectionHistoryToggle?.IsChecked == true;
+            _main.ConfigSvc.Config.StoreConnectionHistory = _draft.StoreConnectionHistory;
+            UpdateTimelineShowEnabled();
+            _main.ApplyInfoSectionMode();
+        }
+
+        private void UpdateTimelineShowEnabled()
+        {
+            // Each show-toggle is only available when its own capture is on.
+            // The panel auto-hides when both show-toggles are off or disabled.
+            if (ShowTimelineToggle    != null) ShowTimelineToggle.IsEnabled    = _draft.StoreConnectionHistory;
+            if (ShowWifiInChartToggle != null) ShowWifiInChartToggle.IsEnabled = _draft.StoreWifiHistory;
         }
 
         private void HideWifiRules_Changed(object sender, System.Windows.RoutedEventArgs e)
@@ -1789,10 +1802,11 @@ namespace MasselGUARD.Views
             _main.ConfigSvc.Config.ShowWifiRulesOnMainWindow = _draft.ShowWifiRulesOnMainWindow;
             _main.ConfigSvc.Config.ShowTunnelRulesColumn = _draft.ShowTunnelRulesColumn;
             _main.ConfigSvc.Config.ShowActivityLog        = _draft.ShowActivityLog;
-            _main.ConfigSvc.Config.InfoSection            = _draft.InfoSection;
-            _main.ConfigSvc.Config.InfoTimeRangeDays      = _draft.InfoTimeRangeDays;
-            _main.ConfigSvc.Config.StoreWifiHistory       = _draft.StoreWifiHistory;
-            _main.ConfigSvc.Config.ShowWifiInChart        = _draft.ShowWifiInChart;
+            _main.ConfigSvc.Config.ShowTimeline             = _draft.ShowTimeline;
+            _main.ConfigSvc.Config.StoreConnectionHistory  = _draft.StoreConnectionHistory;
+            _main.ConfigSvc.Config.InfoTimeRangeDays       = _draft.InfoTimeRangeDays;
+            _main.ConfigSvc.Config.StoreWifiHistory        = _draft.StoreWifiHistory;
+            _main.ConfigSvc.Config.ShowWifiInChart         = _draft.ShowWifiInChart;
             _main.ConfigSvc.Config.NotificationDurationSeconds = _draft.NotificationDurationSeconds;
             _main.ConfigSvc.Config.UseCustomTheme      = _draft.UseCustomTheme;
             _main.ConfigSvc.Config.SystemThemeMode     = _draft.SystemThemeMode;
@@ -1890,9 +1904,12 @@ namespace MasselGUARD.Views
             if (ChartRange24h  != null) ChartRange24h.IsChecked  = _draft.InfoTimeRangeDays == 1;
             if (ChartRange7d   != null) ChartRange7d.IsChecked   = _draft.InfoTimeRangeDays == 7;
             if (ChartRange31d  != null) ChartRange31d.IsChecked  = _draft.InfoTimeRangeDays == 31;
-            if (StoreWifiHistoryToggle!= null) StoreWifiHistoryToggle.IsChecked  = _draft.StoreWifiHistory;
-            if (ShowWifiInChartToggle != null) ShowWifiInChartToggle.IsChecked   = _draft.ShowWifiInChart;
+            if (StoreWifiHistoryToggle       != null) StoreWifiHistoryToggle.IsChecked       = _draft.StoreWifiHistory;
+            if (ShowWifiInChartToggle        != null) ShowWifiInChartToggle.IsChecked        = _draft.ShowWifiInChart;
+            if (ShowTimelineToggle           != null) ShowTimelineToggle.IsChecked           = _draft.ShowTimeline;
+            if (StoreConnectionHistoryToggle != null) StoreConnectionHistoryToggle.IsChecked = _draft.StoreConnectionHistory;
             _loading = false;
+            UpdateTimelineShowEnabled();
 
             var entries = _main.HistorySvc.Entries;
             var items   = entries
@@ -1912,9 +1929,7 @@ namespace MasselGUARD.Views
             if (_loading) return;
             _draft.StoreWifiHistory = StoreWifiHistoryToggle?.IsChecked == true;
             _main.ConfigSvc.Config.StoreWifiHistory = _draft.StoreWifiHistory;
-            // If storage is turned off, also disable show
-            if (!_draft.StoreWifiHistory && ShowWifiInChartToggle != null)
-                ShowWifiInChartToggle.IsChecked = false;
+            UpdateTimelineShowEnabled();
             _main.ApplyInfoSectionMode();
         }
 

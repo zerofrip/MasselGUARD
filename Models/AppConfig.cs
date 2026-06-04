@@ -108,17 +108,42 @@ namespace MasselGUARD.Models
         public bool ShowDnsIndicator { get; set; } = true;
 
         // ── Info / statistics section ─────────────────────────────────────────
-        /// <summary>
-        /// Controls the statistics panel above the footer.
-        /// Show = visible + store traffic; Hide = hidden but store; HideAndNoStore = hidden + no store.
-        /// </summary>
-        public InfoSectionMode InfoSection        { get; set; } = InfoSectionMode.Show;
+        /// <summary>Show the timeline/statistics panel above the footer.</summary>
+        public bool ShowTimeline             { get; set; } = true;
+        /// <summary>Record tunnel connection history (uptime, traffic).</summary>
+        public bool StoreConnectionHistory   { get; set; } = true;
         /// <summary>Record WiFi SSID connection timestamps to ssid_history.json.</summary>
-        public bool            StoreWifiHistory  { get; set; } = true;
-        /// <summary>Draw the WiFi SSID bar in the activity chart (requires StoreWifiHistory).</summary>
-        public bool            ShowWifiInChart   { get; set; } = true;
-        /// <summary>1 = last 24 h, 7 = last 7 days.</summary>
-        public int             InfoTimeRangeDays { get; set; } = 1;
+        public bool StoreWifiHistory         { get; set; } = true;
+        /// <summary>Draw the WiFi SSID rows in the activity chart (requires StoreWifiHistory).</summary>
+        public bool ShowWifiInChart          { get; set; } = true;
+        /// <summary>1 = last 24 h, 7 = last 7 days, 31 = last 31 days.</summary>
+        public int  InfoTimeRangeDays        { get; set; } = 1;
+
+        // Legacy — kept for JSON backwards-compat deserialization only; not used by code.
+        // The setter migrates old configs to the two new bools.
+        [System.Text.Json.Serialization.JsonInclude]
+        public InfoSectionMode InfoSection
+        {
+            get => ShowTimeline ? InfoSectionMode.Show
+                 : StoreConnectionHistory ? InfoSectionMode.Hide
+                 : InfoSectionMode.HideAndNoStore;
+            set
+            {
+                ShowTimeline           = value == InfoSectionMode.Show;
+                StoreConnectionHistory = value != InfoSectionMode.HideAndNoStore;
+            }
+        }
+
+        // ── Column widths (pixels; 0 = derive from proportional defaults) ────
+        public double TunColNameW    { get; set; } = 0;
+        public double TunColStatusW  { get; set; } = 0;
+        public double TunColRulesW   { get; set; } = 0;
+        public double TunColActionW  { get; set; } = 0;
+        public double WifiColNameW   { get; set; } = 0;
+        public double WifiColSsidW   { get; set; } = 0;
+        public double WifiColActionW { get; set; } = 0;
+        public double WifiColCountW  { get; set; } = 0;
+        public double WifiColTunnelW { get; set; } = 0;
 
         // ── Kill switch ───────────────────────────────────────────────────────
         /// <summary>

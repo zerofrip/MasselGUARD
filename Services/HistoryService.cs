@@ -17,6 +17,11 @@ namespace MasselGUARD.Services
 
         private static readonly string HistoryPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "MasselGUARD", "tunnel_history.json");
+
+        // Legacy path — migrated on first Load()
+        private static readonly string HistoryPathLegacy = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "MasselGUARD", "history.json");
 
         private static readonly JsonSerializerOptions JsonOpts = new()
@@ -40,6 +45,12 @@ namespace MasselGUARD.Services
 
         public void Load()
         {
+            // Migrate legacy history.json → tunnel_history.json on first run
+            if (!File.Exists(HistoryPath) && File.Exists(HistoryPathLegacy))
+            {
+                try { File.Move(HistoryPathLegacy, HistoryPath); } catch { }
+            }
+
             if (!File.Exists(HistoryPath)) return;
             try
             {
@@ -77,6 +88,11 @@ namespace MasselGUARD.Services
 
         private static readonly string SsidHistoryPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "MasselGUARD", "wifi_history.json");
+
+        // Legacy path — migrated on first LoadSsid()
+        private static readonly string SsidHistoryPathLegacy = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "MasselGUARD", "ssid_history.json");
 
         private const int MaxSsidEntries = 500;
@@ -91,6 +107,12 @@ namespace MasselGUARD.Services
 
         public void LoadSsid()
         {
+            // Migrate legacy ssid_history.json → wifi_history.json on first run
+            if (!File.Exists(SsidHistoryPath) && File.Exists(SsidHistoryPathLegacy))
+            {
+                try { File.Move(SsidHistoryPathLegacy, SsidHistoryPath); } catch { }
+            }
+
             if (!File.Exists(SsidHistoryPath)) return;
             try
             {
@@ -117,7 +139,7 @@ namespace MasselGUARD.Services
         }
 
         /// <summary>Record connection to a new SSID (closes any previously-open entry first).</summary>
-        public void RecordSsidConnect(string ssid)
+        public void RecordSsidConnect(string ssid, bool isOpen = false)
         {
             if (string.IsNullOrWhiteSpace(ssid)) return;
             lock (_ssidLock)
@@ -135,6 +157,7 @@ namespace MasselGUARD.Services
                 {
                     Ssid        = ssid,
                     ConnectedAt = DateTime.UtcNow,
+                    IsOpen      = isOpen,
                 });
 
                 if (_ssidEntries.Count > MaxSsidEntries)

@@ -578,7 +578,7 @@ namespace MasselGUARD.Cli
                 {
                     Name   = tunnelName,
                     Source = "local",
-                    Config = TunnelService.EncryptConfig(plainText),
+                    Path   = TunnelService.SaveConfigToFile(tunnelName, plainText),
                     Group  = groupArg ?? "",
                 };
             }
@@ -733,7 +733,7 @@ namespace MasselGUARD.Cli
             {
                 Name   = displayName,
                 Source = "local",
-                Config = TunnelService.EncryptConfig(confText),
+                Path   = TunnelService.SaveConfigToFile(displayName, confText),
                 Group  = groupArg ?? "",
             };
 

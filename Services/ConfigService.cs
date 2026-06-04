@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MasselGUARD.Models;
@@ -50,6 +51,43 @@ namespace MasselGUARD.Services
             {
                 Config = new AppConfig();
             }
+
+            MigrateInlineConfigsToFiles();
+        }
+
+        /// <summary>
+        /// One-time migration: move any inline Config blobs to .conf.dpapi files
+        /// and clear the Config field so it no longer appears in config.json.
+        /// </summary>
+        private void MigrateInlineConfigsToFiles()
+        {
+            bool dirty = false;
+            foreach (var t in Config.Tunnels)
+            {
+                if (string.IsNullOrEmpty(t.Config)) continue;
+
+                // Decrypt the inline blob (DPAPI or legacy plaintext fallback).
+                string plaintext;
+                try
+                {
+                    var decrypted = ProtectedData.Unprotect(
+                        Convert.FromBase64String(t.Config), null,
+                        DataProtectionScope.CurrentUser);
+                    plaintext = System.Text.Encoding.UTF8.GetString(decrypted);
+                }
+                catch
+                {
+                    plaintext = t.Config; // legacy plaintext stored by old GUI
+                }
+
+                // Only write a file when the existing path is missing or gone.
+                if (string.IsNullOrEmpty(t.Path) || !File.Exists(t.Path))
+                    t.Path = TunnelService.SaveConfigToFile(t.Name, plaintext);
+
+                t.Config = null;
+                dirty = true;
+            }
+            if (dirty) Save();
         }
 
         // ── Save ─────────────────────────────────────────────────────────────

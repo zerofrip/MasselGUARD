@@ -27,6 +27,10 @@ When bumping version, update **both** `UpdateChecker.cs` (`CurrentVersion` + `_c
 - **`RefreshStatus()` resets DNS badge** — when poll detects tunnel going inactive externally (CLI disconnect), resets `_dnsStatus` and fires PropertyChanged for all DNS properties.
 - **`KillSwitchService.Disable()`** — early-returns if tunnel not in `_active` HashSet, preventing spurious `[KillSwitch] Disabled` log entries.
 - **`UpdateChecker.UpdateAsync`** — takes an `onShutdown` callback so WPF-specific `Application.Current.Dispatcher.Invoke(ShutdownApp)` stays in the GUI call site, keeping `UpdateChecker.cs` WPF-free.
+- **File-only tunnel config storage** — `StoredTunnel.Config` (inline DPAPI blob) is legacy. All new saves write a `.conf.dpapi` file to `%APPDATA%\MasselGUARD\tunnels\` and store only the `Path`. `ConfigService.Load()` migrates old inline entries to files automatically on first run and nulls `Config` so it disappears from `config.json`. The `[JsonIgnore(Condition = WhenWritingNull)]` attribute ensures `Config` is never written once cleared.
+- **`TunnelService.SaveConfigToFile`** — DPAPI-encrypts plaintext and writes to `TunnelStorageDir`. Used by GUI add/edit, import dialog, QR import, and CLI import/rawconnect. Returns the file path stored in `StoredTunnel.Path`.
+- **`ApplyWifiState`** — central method called from both `OnWifiChanged` (WLAN notification) and `TryUpdateWifi` (startup query). Records SSID history and updates all UI. Ensures the current SSID is captured immediately at startup rather than only on WiFi changes.
+- **WiFi history `IsOpen`** — `WifiHistoryEntry.IsOpen` is populated from the `bSecurityEnabled` field of `WLAN_CONNECTION_ATTRIBUTES` (offset +576). `true` = no security (open network). Passed from `WiFiService` → `OnWifiChanged` → `RecordSsidConnect`.
 
 ## Project structure
 
@@ -42,22 +46,24 @@ Cli/
   WireGuardConf.cs          # WireGuard .conf parser/builder
 Models/
   AppConfig.cs              # Main config model (serialised to config.json)
-  StoredTunnel.cs           # Tunnel definition
+  StoredTunnel.cs           # Tunnel definition; Config field is legacy (null after migration)
   ConnectionHistoryEntry.cs
+  WifiHistoryEntry.cs       # Ssid, ConnectedAt, DisconnectedAt, IsOpen
 Services/
-  TunnelService.cs          # Connect/Disconnect orchestration
+  TunnelService.cs          # Connect/Disconnect orchestration; SaveConfigToFile; TunnelStorageDir
   TunnelDll.cs              # P/Invoke to tunnel.dll + wireguard.dll  (root, not Services/)
-  ConfigService.cs          # Load/Save %APPDATA%\MasselGUARD\config.json
-  HistoryService.cs         # Load/Save %APPDATA%\MasselGUARD\history.json
+  ConfigService.cs          # Load/Save config.json; MigrateInlineConfigsToFiles on load
+  HistoryService.cs         # tunnel_history.json + wifi_history.json (with legacy migration)
   KillSwitchService.cs
   LogService.cs
   ScriptService.cs
+  WiFiService.cs            # WLAN API via P/Invoke; fires SsidChanged(ssid, isOpen)
 ViewModels/
   MainViewModel.cs
   TunnelEntryViewModel.cs   # RefreshStatus() drives 1-second poll updates
 Views/
   SettingsWindow.xaml(.cs)
-  MainWindow.xaml(.cs)
+  MainWindow.xaml(.cs)      # ApplyWifiState; ApplyInfoSectionMode; timeline hover/nav
 UpdateChecker.cs            # GitHub release check + auto-update (WPF-free)
 BUILD.bat
 ```
@@ -74,7 +80,7 @@ BUILD.bat
 | `disconnect <name>` | |
 | `disconnect-all` | Supports `--group`; exits 2 when nothing active |
 | `info <name>` | Reads HistoryService for uptime/source |
-| `log [n]` | Reads `history.json`; `--logtype extended` adds source column |
+| `log [n]` | Reads `tunnel_history.json`; `--logtype extended` adds source column |
 | `check-update` | Async GitHub call; exits 1 when update available |
 | `version` / `--version` / `-v` | Shows codename, build stamp, update status |
 | `help` / `--help` / `-h` | |
@@ -88,8 +94,9 @@ Exit codes: `0` success · `1` error · `2` already in desired state
 | File | Location |
 |---|---|
 | Config | `%APPDATA%\MasselGUARD\config.json` |
-| History | `%APPDATA%\MasselGUARD\history.json` |
-| Tunnel configs | `<exedir>\tunnels\*.conf.dpapi` (DPAPI encrypted) |
+| Tunnel history | `%APPDATA%\MasselGUARD\tunnel_history.json` (migrated from `history.json`) |
+| WiFi history | `%APPDATA%\MasselGUARD\wifi_history.json` (migrated from `ssid_history.json`) |
+| Tunnel configs | `%APPDATA%\MasselGUARD\tunnels\*.conf.dpapi` (DPAPI encrypted, one file per tunnel) |
 | Themes | `<exedir>\theme\<folder>\theme.json` |
 | Languages | `<exedir>\lang\*.json` |
 
@@ -97,3 +104,56 @@ Exit codes: `0` success · `1` error · `2` already in desired state
 
 - `"local"` — managed by `TunnelDll` (wireguard-NT via `tunnel.dll`)
 - anything else — WireGuard for Windows companion (`WireGuardTunnel$<name>` service)
+
+## History & WiFi recording
+
+### Tunnel history (`tunnel_history.json`)
+`ConnectionHistoryEntry` fields: `TunnelName`, `ConnectedAt` (UTC), `DisconnectedAt` (UTC, null = still active), `Source`, `SessionRxBytes`, `SessionTxBytes`.
+
+### WiFi history (`wifi_history.json`)
+`WifiHistoryEntry` fields: `Ssid`, `ConnectedAt` (UTC), `DisconnectedAt` (UTC, null = still connected), `IsOpen` (true = no encryption / open network).
+
+Recording flow:
+- **Startup**: `TryUpdateWifi()` → `ApplyWifiState()` → `RecordSsidConnect(ssid, isOpen)`. The current SSID is captured immediately.
+- **SSID change**: `WiFiService.SsidChanged` → `OnWifiChanged` → `ApplyWifiState()` → records new SSID / closes old entry.
+- **Disconnect**: `ApplyWifiState(null, false)` → `RecordSsidDisconnect()` closes the open entry.
+- **App shutdown**: `App.xaml.cs` calls `RecordSsidDisconnect()` directly to close any open entry.
+
+## Activity timeline
+
+The info panel above the footer renders a canvas with:
+- **Tunnel bar** (top, 16 px) — one stacked bar for all tunnels; segments coloured per tunnel.
+- **WiFi band** (below tunnel bar, 16 px single row) — all SSIDs combined on one row, each segment coloured per SSID. Rendered only when `ShowWifiInChart && StoreWifiHistory`.
+- **Time axis** (bottom, 20 px).
+
+### Hover tooltip (Y-hit tested)
+Mouse Y determines primary content:
+
+| Mouse Y | Primary content | Secondary content |
+|---|---|---|
+| Tunnel bar area | Tunnel name, connected since / duration, live KB/s if near-now | WiFi SSID + time below separator |
+| WiFi row area | SSID name (bold), connection time / duration, 🔒 secured or ⚠ open network | Active tunnels below separator |
+| Gap / axis | — | — |
+
+Tooltip shows whenever there is content at the hovered X position — including when only WiFi is active and no tunnel is connected.
+
+### `< >` navigation buttons
+Cycle through tunnel sessions in the time window. The tooltip for each session shows:
+- Tunnel name, time range, duration, traffic (primary)
+- WiFi SSID active at that session's midpoint (below separator, if recorded)
+
+### Settings — History page
+
+| Toggle | Config field | Effect |
+|---|---|---|
+| Capture → Connections | `StoreConnectionHistory` | Writes `tunnel_history.json` |
+| Capture → WiFi (SSID) | `StoreWifiHistory` | Writes `wifi_history.json` |
+| Show → Connections | `ShowTimeline` | Draw tunnel bars in chart; disabled when Capture Connections is off |
+| Show → WiFi (SSID) | `ShowWifiInChart` | Draw WiFi rows in chart; disabled when Capture WiFi is off |
+
+**Panel visibility** is derived in `ApplyInfoSectionMode()`:
+```
+visible = (ShowTimeline && StoreConnectionHistory)
+       || (ShowWifiInChart && StoreWifiHistory)
+```
+The panel auto-hides when both show-conditions are false. The show-toggles are independent — turning off tunnel capture does not force the WiFi show-toggle off, and vice versa.

@@ -59,6 +59,17 @@ namespace MasselGUARD.ViewModels
             }
         }
 
+        // ── Column widths (pixel, bound by DataTemplate ColumnDefinitions) ─────
+        private double _tunCol0W = 160; public double TunCol0W { get => _tunCol0W; set => SetField(ref _tunCol0W, value); }
+        private double _tunCol1W = 180; public double TunCol1W { get => _tunCol1W; set => SetField(ref _tunCol1W, value); }
+        private double _tunCol2W = 60;  public double TunCol2W { get => _tunCol2W; set => SetField(ref _tunCol2W, value); }
+        private double _tunCol3W = 90;  public double TunCol3W { get => _tunCol3W; set => SetField(ref _tunCol3W, value); }
+        private double _wifCol0W = 160; public double WifCol0W { get => _wifCol0W; set => SetField(ref _wifCol0W, value); }
+        private double _wifCol1W = 120; public double WifCol1W { get => _wifCol1W; set => SetField(ref _wifCol1W, value); }
+        private double _wifCol2W = 100; public double WifCol2W { get => _wifCol2W; set => SetField(ref _wifCol2W, value); }
+        private double _wifCol3W = 40;  public double WifCol3W { get => _wifCol3W; set => SetField(ref _wifCol3W, value); }
+        private double _wifCol4W = 120; public double WifCol4W { get => _wifCol4W; set => SetField(ref _wifCol4W, value); }
+
         // ── Commands ──────────────────────────────────────────────────────────
         public RelayCommand AddTunnelCommand    { get; }
         public RelayCommand EditTunnelCommand   { get; }
