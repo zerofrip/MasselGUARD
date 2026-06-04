@@ -2,6 +2,8 @@
 
 **Automated WireGuard tunnel management for Windows**
 
+<img width="1805" height="997" alt="MasselGUARD 3 5 0" src="https://github.com/user-attachments/assets/8149f9c2-3605-41c5-9cf8-6e04fee342d9" />
+
 MasselGUARD sits in the system tray and watches your WiFi connection. When you join a known network it activates the right WireGuard tunnel automatically. When you leave, or land on an unknown network, a configurable fallback fires. It also works as a clean manual WireGuard front-end.
 
 > **User manual** → [`docs/MANUAL.md`](docs/MANUAL.md)
