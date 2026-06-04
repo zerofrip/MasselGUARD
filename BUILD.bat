@@ -4,13 +4,17 @@ setlocal enabledelayedexpansion
 
 rem ── Build number: YYMMDDHHMM ────────────────────────────────────────────────
 for /f %%a in ('powershell -NoProfile -Command "Get-Date -Format yyMMddHHmm"') do set BUILD_NUM=%%a
-set VERSION=3.3.0
+set VERSION=3.5.0
 rem Update CODENAME here AND in UpdateChecker.cs when bumping VERSION.
-set CODENAME=Camouflaged Koala
+set CODENAME=Hypersonic Quokka
 
 rem ── Opt out of .NET CLI telemetry ────────────────────────────────────────────
 set DOTNET_CLI_TELEMETRY_OPTOUT=1
 set DOTNET_NOLOGO=1
+
+set DIST=%~dp0dist
+set DEPS=%~dp0wireguard-deps
+
 echo.
 echo  --------------------------------------------------
 echo  MasselGUARD  v%VERSION%  ^|  %CODENAME%
@@ -41,54 +45,95 @@ pause & exit /b 1
 :sdk_ok
 echo.
 
-rem ── Step 2a: pre-flight check — fail fast if previous exe is still running ───
-if exist "%~dp0dist\MasselGUARD.exe" (
-    ren "%~dp0dist\MasselGUARD.exe" "MasselGUARD.exe.__chk" >nul 2>&1
+rem ── Step 2a: pre-flight — fail if either exe is locked by a running process ──
+if exist "!DIST!\MasselGUARD.exe" (
+    ren "!DIST!\MasselGUARD.exe" "MasselGUARD.exe.__chk" >nul 2>&1
     if errorlevel 1 (
         echo  ==========================================
         echo   BUILD FAILED -- EXE IS STILL RUNNING
         echo  ==========================================
         echo.
         echo   Close MasselGUARD.exe before building,
-        echo   then run build.bat again.
+        echo   then run BUILD.bat again.
         echo.
         pause & exit /b 1
     )
-    ren "%~dp0dist\MasselGUARD.exe.__chk" "MasselGUARD.exe" >nul 2>&1
+    ren "!DIST!\MasselGUARD.exe.__chk" "MasselGUARD.exe" >nul 2>&1
+)
+if exist "!DIST!\MasselGUARDcli.exe" (
+    ren "!DIST!\MasselGUARDcli.exe" "MasselGUARDcli.exe.__chk" >nul 2>&1
+    if errorlevel 1 (
+        echo  ==========================================
+        echo   BUILD FAILED -- CLI EXE IS STILL RUNNING
+        echo  ==========================================
+        echo.
+        echo   Close MasselGUARDcli.exe before building,
+        echo   then run BUILD.bat again.
+        echo.
+        pause & exit /b 1
+    )
+    ren "!DIST!\MasselGUARDcli.exe.__chk" "MasselGUARDcli.exe" >nul 2>&1
 )
 
-rem ── Step 2b: compile the application ────────────────────────────────────────
+rem ── Step 2b: compile MasselGUARD (GUI) ───────────────────────────────────────
 echo  -------------------------------------------------------
-echo   Compiling MasselGUARD...
+echo   Compiling MasselGUARD (GUI)...
 echo  -------------------------------------------------------
 echo.
-dotnet publish "%~dp0MasselGUARD.csproj" -c Release -o "%~dp0dist" -v:minimal -p:Version=%VERSION% -p:AssemblyVersion=%VERSION%.0 -p:FileVersion=%VERSION%.0 -p:InformationalVersion=%VERSION%.%BUILD_NUM%
-if errorlevel 1 (
+dotnet publish "%~dp0MasselGUARD.csproj" -c Release -o "!DIST!" ^
+    -p:Version=%VERSION% ^
+    -p:AssemblyVersion=%VERSION%.0 ^
+    -p:FileVersion=%VERSION%.0 ^
+    -p:InformationalVersion=%VERSION%.%BUILD_NUM%
+if not exist "!DIST!\MasselGUARD.exe" (
     echo.
     echo  ==========================================
-    echo   BUILD FAILED
+    echo   BUILD FAILED -- MasselGUARD.exe not produced
     echo  ==========================================
     echo.
     pause & exit /b 1
 )
+echo.
+echo  OK  MasselGUARD.exe
+echo.
 
-if not exist "%~dp0dist\MasselGUARD.exe" (
-    echo  ERROR: exe not found after publish.
+rem ── Step 2c: compile MasselGUARDcli (CLI) ────────────────────────────────────
+echo  -------------------------------------------------------
+echo   Compiling MasselGUARDcli (CLI)...
+echo  -------------------------------------------------------
+echo.
+dotnet publish "%~dp0MasselGUARDcli\MasselGUARDcli.csproj" -c Release -o "!DIST!" ^
+    -p:Version=%VERSION% ^
+    -p:AssemblyVersion=%VERSION%.0 ^
+    -p:FileVersion=%VERSION%.0 ^
+    -p:InformationalVersion=%VERSION%.%BUILD_NUM%
+if not exist "!DIST!\MasselGUARDcli.exe" (
+    echo.
+    echo  ==========================================
+    echo   BUILD FAILED -- MasselGUARDcli.exe not produced
+    echo  ==========================================
+    echo.
     pause & exit /b 1
 )
-
 echo.
-echo  Compile OK -- MasselGUARD.exe ready.
+echo  OK  MasselGUARDcli.exe
 echo.
 
-rem ── Step 3: copy theme folder into dist ──────────────────────────────────────
+rem ── Step 3: copy lang + theme folders into dist ──────────────────────────────
 echo  -------------------------------------------------------
-echo   Copying theme folder...
+echo   Copying lang + theme folders...
 echo  -------------------------------------------------------
+if exist "%~dp0lang" (
+    if exist "!DIST!\lang" rmdir /s /q "!DIST!\lang"
+    xcopy /e /i /q "%~dp0lang" "!DIST!\lang" >nul
+    echo  lang folder copied to dist\lang\
+) else (
+    echo  WARNING: lang folder not found -- skipped.
+)
 if exist "%~dp0theme" (
-    if exist "%~dp0dist\theme" rmdir /s /q "%~dp0dist\theme"
-    xcopy /e /i /q "%~dp0theme" "%~dp0dist\theme" >nul
-    echo  Theme folder copied to dist\theme\
+    if exist "!DIST!\theme" rmdir /s /q "!DIST!\theme"
+    xcopy /e /i /q "%~dp0theme" "!DIST!\theme" >nul
+    echo  theme folder copied to dist\theme\
 ) else (
     echo  WARNING: theme folder not found -- skipped.
 )
@@ -98,8 +143,6 @@ rem ── Step 4: copy DLLs from wireguard-deps ──────────�
 echo  -------------------------------------------------------
 echo   Copying tunnel DLLs from wireguard-deps\...
 echo  -------------------------------------------------------
-set DIST=%~dp0dist
-set DEPS=%~dp0wireguard-deps
 set DLL_OK=1
 
 if exist "!DEPS!\tunnel.dll" (
@@ -107,7 +150,7 @@ if exist "!DEPS!\tunnel.dll" (
     echo    Copied: tunnel.dll
 ) else (
     echo  WARNING: wireguard-deps\tunnel.dll not found.
-    echo           Run tunnelbuild\\tunnelbuild.bat, then copy DLLs to wireguard-deps\.
+    echo           Run tunnelbuild\tunnelbuild.bat, then copy DLLs to wireguard-deps\.
     set DLL_OK=0
 )
 
@@ -116,7 +159,7 @@ if exist "!DEPS!\wireguard.dll" (
     echo    Copied: wireguard.dll
 ) else (
     echo  WARNING: wireguard-deps\wireguard.dll not found.
-    echo           Run tunnelbuild\\tunnelbuild.bat, then copy DLLs to wireguard-deps\.
+    echo           Run tunnelbuild\tunnelbuild.bat, then copy DLLs to wireguard-deps\.
     set DLL_OK=0
 )
 
@@ -125,7 +168,8 @@ echo  ==========================================
 echo   BUILD SUCCESSFUL
 echo  ==========================================
 echo.
-echo   dist\MasselGUARD.exe
+echo   dist\MasselGUARD.exe     (GUI application)
+echo   dist\MasselGUARDcli.exe  (command-line interface)
 echo   dist\lang\
 echo   dist\theme\
 if "!DLL_OK!"=="1" (
@@ -135,12 +179,13 @@ if "!DLL_OK!"=="1" (
     echo   Standalone local tunnels: ready.
 ) else (
     echo.
-    echo   NOTE: One or more DLLs not copied.
-    echo   Run tunnelbuild\\tunnelbuild.bat to rebuild,
+    echo   NOTE: One or more WireGuard DLLs were not copied.
+    echo   Run tunnelbuild\tunnelbuild.bat to rebuild,
     echo   then re-run BUILD.bat, or copy DLLs manually.
 )
 echo.
 echo   Target machine requires .NET 10 Desktop Runtime:
 echo   https://dotnet.microsoft.com/download/dotnet/10.0
+echo.
 pause
 exit /b 0

@@ -1,6 +1,6 @@
 # MasselGUARD — User Manual
 
-**Version 3.3.0 — Camouflaged Koala**
+**Version 3.5.0 — Hypersonic Quokka**
 
 ---
 
@@ -19,19 +19,21 @@
 11. [Settings — Appearance](#11-settings--appearance)
 12. [Settings — Default Action](#12-settings--default-action)
 13. [Settings — WiFi Rules](#13-settings--wifi-rules)
-14. [Settings — Advanced](#14-settings--advanced)
-15. [Settings — About](#15-settings--about)
-16. [Pre/post scripts](#16-prepost-scripts)
-17. [Quick Connect](#17-quick-connect)
-18. [Import / Export settings](#18-import--export-settings)
-19. [The activity log](#19-the-activity-log)
-20. [System tray](#20-system-tray)
-21. [Kill switch](#21-kill-switch)
-22. [Themes](#22-themes)
-23. [Font override](#23-font-override)
-24. [Multiple languages](#24-multiple-languages)
-25. [Frequently asked questions](#25-frequently-asked-questions)
-26. [Command-line interface (CLI)](#26-command-line-interface-cli)
+14. [Settings — History](#14-settings--history)
+15. [Settings — Advanced](#15-settings--advanced)
+16. [Settings — About](#16-settings--about)
+17. [Pre/post scripts](#17-prepost-scripts)
+18. [Quick Connect](#18-quick-connect)
+19. [Import / Export settings](#19-import--export-settings)
+20. [The activity log](#20-the-activity-log)
+21. [Activity timeline](#21-activity-timeline)
+22. [System tray](#22-system-tray)
+23. [Kill switch](#23-kill-switch)
+24. [Themes](#24-themes)
+25. [Font override](#25-font-override)
+26. [Multiple languages](#26-multiple-languages)
+27. [Frequently asked questions](#27-frequently-asked-questions)
+28. [Command-line interface (CLI)](#28-command-line-interface-cli) — see also [`CLIManual.md`](CLIManual.md) for the full reference
 
 ---
 
@@ -320,7 +322,33 @@ Rules changes save via the main Save button.
 
 ---
 
-## 14. Settings — Advanced
+## 14. Settings — History
+
+Controls what connection and WiFi data is recorded and displayed in the activity timeline.
+
+### Capture
+
+| Toggle | Effect |
+|---|---|
+| **Connections** | Record tunnel connect/disconnect events to `tunnel_history.json` |
+| **WiFi (SSID)** | Record WiFi network connect/disconnect events to `wifi_history.json`, including security type |
+
+### Show
+
+| Toggle | Effect | Enabled when |
+|---|---|---|
+| **Connections** | Draw tunnel session bars in the timeline chart | Capture Connections is on |
+| **WiFi (SSID)** | Draw WiFi SSID rows in the timeline chart | Capture WiFi is on |
+
+The timeline panel **auto-hides** when both Show toggles are effectively off (either disabled by their capture toggle, or manually switched off). Turning off Capture does not force the Show toggle off — it only disables it, preserving your preference for when Capture is re-enabled.
+
+### Activity chart — Time range
+
+Pill selector: **Last 24 hours** · **Last 7 days** · **Last 31 days**
+
+---
+
+## 15. Settings — Advanced
 
 **Order:**
 1. Import / Export settings
@@ -350,7 +378,7 @@ When extended logging is active, only **changed** fields are logged after Save:
 
 ---
 
-## 15. Settings — About
+## 16. Settings — About
 
 ### Version and update
 
@@ -377,19 +405,19 @@ A scrollable panel showing release notes for all versions, fetched live from `do
 
 ---
 
-## 16. Pre/post scripts
+## 17. Pre/post scripts
 
 Four hook points per tunnel: Before connect / After connect / Before disconnect / After disconnect. `.bat` or `.ps1` files. Logged in Extended mode.
 
 ---
 
-## 17. Quick Connect
+## 18. Quick Connect
 
 Connect a `.conf` or `.conf.dpapi` file without importing. Appears as `⚡ filename` at top of tunnel list. Disappears after disconnecting.
 
 ---
 
-## 18. Import / Export settings
+## 19. Import / Export settings
 
 **Export** — saves to `.masselguard` (JSON). Tunnel configs not included. A themed confirmation dialog warns that configs are excluded before writing.
 
@@ -402,7 +430,7 @@ Connect a `.conf` or `.conf.dpapi` file without importing. Appears as `⚡ filen
 
 ---
 
-## 19. The activity log
+## 20. The activity log
 
 Column header: **Time** | **Event** — consistent with Tunnels and WiFi Rules panels.
 
@@ -420,7 +448,45 @@ The panel can be collapsed via the `»` button in its header, or reopened via th
 
 ---
 
-## 20. System tray
+## 21. Activity timeline
+
+The activity timeline is a canvas shown above the footer when at least one history layer is active. It covers the last 24 h, 7 d, or 31 d (set in Settings → History → Activity chart).
+
+### Canvas layout
+
+| Row | Height | Content |
+|---|---|---|
+| Tunnel bar | 16 px | Coloured segments per tunnel; stacked when multiple tunnels overlap |
+| WiFi band | 16 px × SSID count | One row per distinct SSID seen in the time window |
+| Time axis | 20 px | Tick marks with timestamps |
+
+### Hover tooltip
+
+Move the mouse anywhere over the canvas. A vertical crosshair follows the cursor and a tooltip shows everything active at that point in time:
+
+- **Tunnel rows** — coloured dot, tunnel name, connected-since / time range, duration, traffic (↑/↓). If the cursor is near the right edge (live data), shows live KB/s instead.
+- **WiFi row** — 📶 SSID name, connection time or range, duration, 🔒 secured / ⚠ open network tag.
+
+The tooltip shows on all Y positions (tunnel bar, WiFi rows, gap). If nothing is active at the hovered time, only the crosshair is drawn.
+
+### `< >` navigation
+
+The `<` and `>` buttons step through tunnel sessions within the current time window. Each click pins a tooltip to that session's midpoint showing the full session detail plus the WiFi SSID active at that time.
+
+### Settings — History (effect on timeline)
+
+| Capture Connections | Capture WiFi | Show Connections | Show WiFi | Panel |
+|---|---|---|---|---|
+| ✓ | ✓ | ✓ | ✓ | Tunnel bars + WiFi rows |
+| ✓ | ✓ | ✓ | ✗ | Tunnel bars only |
+| ✓ | ✓ | ✗ | ✓ | WiFi rows only |
+| ✓ | ✗ | ✓ | — | Tunnel bars only |
+| ✗ | ✓ | — | ✓ | WiFi rows only |
+| any | any | ✗ | ✗ | Panel hidden |
+
+---
+
+## 22. System tray
 
 **Icon states:**
 - Filled green shield — one or more tunnels active
@@ -435,7 +501,7 @@ Right-click → menu. Double-click → show main window. × in main window → m
 
 ---
 
-## 21. Kill switch
+## 23. Kill switch
 
 The kill switch blocks all outbound internet traffic except through the active WireGuard tunnel. If the tunnel drops, traffic is blocked rather than leaking over the regular network interface.
 
@@ -460,7 +526,7 @@ At startup, `KillSwitchService.CleanupStaleRules()` removes any leftover `Massel
 
 ---
 
-## 22. Themes
+## 24. Themes
 
 ### Built-in themes
 
@@ -480,7 +546,7 @@ See `theme/THEME_INFO.md` for the full key reference.
 
 ---
 
-## 23. Font override
+## 25. Font override
 
 Enable **Override font** in Settings → Appearance → Font to replace the theme typeface with any installed system font.
 
@@ -493,13 +559,13 @@ To return to the theme's own font: toggle **Override font** off.
 
 ---
 
-## 24. Multiple languages
+## 26. Multiple languages
 
 English, Dutch, German, French, Spanish. Change in Settings → General. Add a language: copy `lang\en.json`, translate, add `_code` and `_language` keys.
 
 ---
 
-## 25. Frequently asked questions
+## 27. Frequently asked questions
 
 **Rules fire twice when switching networks.**
 Fixed — debounce re-fire guard and `ApplyWifiState` duplicate guard prevent double execution.
@@ -566,7 +632,7 @@ Fixed in v3.3.0 — `SettingsImportVersionWarning` and `SettingsImportVersionNew
 
 ---
 
-## 26. Command-line interface (CLI)
+## 28. Command-line interface (CLI)
 
 MasselGUARD includes a full CLI for scripting and automation. The GUI and CLI share the same WireGuard kernel driver — any change made via CLI is reflected in the GUI within ~1 second.
 
@@ -584,8 +650,12 @@ Must run as Administrator. When invoked from a non-elevated terminal, Windows wi
 | `status` | `--status` | Show active tunnel count and names |
 | `connect <name>` | — | Connect a tunnel by name |
 | `connect --default` | — | Connect the configured default tunnel |
+| `connect --all` | — | Connect all tunnels |
 | `disconnect <name>` | — | Disconnect a tunnel by name |
 | `disconnect-all` | — | Disconnect all active tunnels |
+| `info <name>` | — | Detailed status for one tunnel (type, group, uptime, source) |
+| `log [n]` | — | Last *n* connection history entries (default 20) |
+| `check-update` | `--check-update` | Live update check against GitHub |
 | `version` | `--version`, `-v` | Show version, build, author and update status |
 | `help` | `--help`, `-h` | Show this command reference |
 
@@ -595,6 +665,9 @@ Must run as Administrator. When invoked from a non-elevated terminal, Windows wi
 |---|---|
 | `--json` | Machine-readable JSON output |
 | `--quiet`, `-q` | No output — exit code only (for scripting) |
+| `--group <name>` | Scope `list` / `connect --all` / `disconnect-all` to one group |
+| `--active` | Filter `list` to connected tunnels only |
+| `--logtype normal\|extended` | Log detail level for `log` command (default: `normal`) |
 
 ### Exit codes
 
@@ -603,6 +676,43 @@ Must run as Administrator. When invoked from a non-elevated terminal, Windows wi
 | `0` | Success |
 | `1` | Error (tunnel not found, connect failed, not elevated, etc.) |
 | `2` | Already in desired state (already connected / already disconnected) |
+
+### About `log [n]`
+
+`log` reads from `%APPDATA%\MasselGUARD\tunnel_history.json` — the **same file** the GUI's Settings → History tab reads. There is no separate CLI log and no duplication.
+
+The GUI's activity log panel (right side of the main window) is **in-memory only** and is not accessible from the CLI. `log` shows connection history only.
+
+```
+MasselGUARD log 5
+  Tunnel                  When               Duration
+  ──────────────────────  ─────────────────  ──────────
+  1.MasselinkVPN-Split    today 09:31        active
+  2.MasselinkVPN-Full     yesterday 14:05    42m 10s
+  1.MasselinkVPN-Split    yesterday 08:12    6h 41m
+```
+
+With `--logtype extended`, a **Source** column is added showing what triggered the connection (e.g. `Rule: HomeNet → Work VPN`, `Manual`, `Auto-reconnect`):
+
+```
+MasselGUARD log 3 --logtype extended
+  Tunnel                  When               Duration    Source
+  ──────────────────────  ─────────────────  ──────────  ──────────────────────────
+  1.MasselinkVPN-Split    today 09:31        active      Rule: HomeNet → Work VPN
+  2.MasselinkVPN-Full     yesterday 14:05    42m 10s     Manual
+```
+
+### About `info <name>`
+
+```
+MasselGUARD info "1.MasselinkVPN-Split-AG"
+
+  Name:    1.MasselinkVPN-Split-AG
+  Type:    Local (tunnel.dll)
+  Group:   Work
+  Status:  ● Connected  1h 23m
+  Source:  Rule: HomeNet → Work VPN  (today 09:31)
+```
 
 ### Version output
 

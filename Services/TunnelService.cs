@@ -23,6 +23,11 @@ namespace MasselGUARD.Services
     /// </summary>
     public class TunnelService
     {
+        /// <summary>Persistent storage for .conf.dpapi files — one per tunnel.</summary>
+        public static readonly string TunnelStorageDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "MasselGUARD", "tunnels");
+
         private static readonly string TunnelDir = Path.Combine(
             AppContext.BaseDirectory, "tunnels");
         private static readonly string TempDir = Path.Combine(TunnelDir, "temp");
@@ -167,15 +172,16 @@ namespace MasselGUARD.Services
 
         // ── Disconnect ────────────────────────────────────────────────────────
 
-        public bool Disconnect(StoredTunnel stored)
+        public bool Disconnect(StoredTunnel stored, AppConfig? cfg = null)
         {
             try
             {
                 RunScript(stored.PreDisconnectScript, "pre-disconnect", stored.Name);
 
+                bool storeTraffic = cfg?.StoreConnectionHistory != false;
                 bool ok = stored.Source == "local"
-                    ? DisconnectLocal(stored)
-                    : DisconnectWireGuard(stored);
+                    ? DisconnectLocal(stored, storeTraffic)
+                    : DisconnectWireGuard(stored, storeTraffic);
 
                 if (ok)
                     RunScript(stored.PostDisconnectScript, "post-disconnect", stored.Name);
@@ -189,14 +195,14 @@ namespace MasselGUARD.Services
             }
         }
 
-        private bool DisconnectLocal(StoredTunnel stored)
+        private bool DisconnectLocal(StoredTunnel stored, bool storeTraffic)
         {
             try
             {
                 // Snapshot bytes BEFORE the adapter is torn down — it disappears on disconnect
                 var finalStats = TunnelDll.GetTrafficStats(stored.Name);
                 TunnelDll.Disconnect(stored.Name, out string disconnErr);
-                LogDisconnect(stored.Name, finalStats);
+                LogDisconnect(stored.Name, finalStats, storeTraffic);
                 if (!string.IsNullOrEmpty(disconnErr)) _log.Warn(disconnErr);
                 _ks?.Disable(stored.Name);
                 return true;
@@ -204,7 +210,7 @@ namespace MasselGUARD.Services
             catch (Exception ex) { _log.Warn($"TunnelDll.Disconnect failed: {ex.Message}"); return false; }
         }
 
-        private bool DisconnectWireGuard(StoredTunnel stored)
+        private bool DisconnectWireGuard(StoredTunnel stored, bool storeTraffic)
         {
             var svcName = "WireGuardTunnel$" + stored.Name;
             try
@@ -214,7 +220,7 @@ namespace MasselGUARD.Services
                 using var sc = new ServiceController(svcName);
                 sc.Stop();
                 sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
-                LogDisconnect(stored.Name, finalStats);
+                LogDisconnect(stored.Name, finalStats, storeTraffic);
                 _ks?.Disable(stored.Name);
                 return true;
             }
@@ -222,9 +228,19 @@ namespace MasselGUARD.Services
         }
 
         private void LogDisconnect(string name,
-            TunnelDll.TunnelStats finalStats = default)
+            TunnelDll.TunnelStats finalStats = default, bool storeTraffic = true)
         {
-            _history.RecordDisconnect(name);
+            // Compute session byte delta unconditionally — used for history and extended log
+            long sessionRx = 0, sessionTx = 0;
+            if (finalStats.AdapterFound && _connectBytes.TryGetValue(name, out var startBytes))
+            {
+                sessionTx = Math.Max(0, finalStats.TxBytes - startBytes.tx);
+                sessionRx = Math.Max(0, finalStats.RxBytes - startBytes.rx);
+            }
+
+            _history.RecordDisconnect(name,
+                storeTraffic ? sessionRx : 0,
+                storeTraffic ? sessionTx : 0);
 
             // Always log the basic disconnect message
             _log.Ok($"Disconnected: {name}");
@@ -239,13 +255,8 @@ namespace MasselGUARD.Services
                            : $"{(int)elapsed.TotalDays}d {elapsed.Hours:D2}h {elapsed.Minutes:D2}m";
 
                 string detail = dur;
-                if (finalStats.AdapterFound &&
-                    _connectBytes.TryGetValue(name, out var startBytes))
-                {
-                    long sessionTx = Math.Max(0, finalStats.TxBytes - startBytes.tx);
-                    long sessionRx = Math.Max(0, finalStats.RxBytes - startBytes.rx);
+                if (finalStats.AdapterFound)
                     detail += $"  |  ↑ {FormatBytes(sessionTx)}  ↓ {FormatBytes(sessionRx)}";
-                }
 
                 // isContinuation = true renders as "  ↳ " in grey (Debug level = TextMuted)
                 _log.Write(LogLevel.Debug, detail, isContinuation: true);
@@ -273,7 +284,7 @@ namespace MasselGUARD.Services
 
         // ── DPAPI helpers ─────────────────────────────────────────────────────
 
-        private static string DecryptConfig(StoredTunnel stored)
+        public static string DecryptConfig(StoredTunnel stored)
         {
             if (!string.IsNullOrEmpty(stored.Config))
             {
@@ -302,6 +313,11 @@ namespace MasselGUARD.Services
                 }
                 return File.ReadAllText(stored.Path);
             }
+
+            // Migration: Config stored as plaintext by older GUI versions — use as-is.
+            if (!string.IsNullOrEmpty(stored.Config))
+                return stored.Config;
+
             return "";
         }
 
@@ -319,6 +335,23 @@ namespace MasselGUARD.Services
                 System.Text.Encoding.UTF8.GetBytes(plaintext), null,
                 DataProtectionScope.CurrentUser);
             return Convert.ToBase64String(bytes);
+        }
+
+        /// <summary>
+        /// DPAPI-encrypts <paramref name="plaintext"/> and writes it to
+        /// TunnelStorageDir\{safeName}.conf.dpapi. Returns the full path.
+        /// </summary>
+        public static string SaveConfigToFile(string tunnelName, string plaintext)
+        {
+            Directory.CreateDirectory(TunnelStorageDir);
+            var invalid = System.IO.Path.GetInvalidFileNameChars();
+            var safeName = new string(tunnelName.Select(c => Array.IndexOf(invalid, c) >= 0 ? '_' : c).ToArray());
+            var path = System.IO.Path.Combine(TunnelStorageDir, safeName + ".conf.dpapi");
+            var bytes = ProtectedData.Protect(
+                System.Text.Encoding.UTF8.GetBytes(plaintext), null,
+                DataProtectionScope.CurrentUser);
+            File.WriteAllBytes(path, bytes);
+            return path;
         }
 
         // ── ACL secure write ─────────────────────────────────────────────────

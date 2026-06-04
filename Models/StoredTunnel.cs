@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MasselGUARD.Models
 {
     /// <summary>
@@ -8,11 +10,15 @@ namespace MasselGUARD.Models
     public class StoredTunnel
     {
         public string  Name   { get; set; } = "";
-        /// <summary>Encrypted DPAPI config content, or @embed:... for inline scripts.</summary>
-        public string  Config { get; set; } = "";
+        /// <summary>
+        /// Legacy inline DPAPI blob. Kept for deserialization during migration only.
+        /// New saves always use Path to a .conf.dpapi file; this is null and omitted from JSON.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Config { get; set; } = null;
         /// <summary>"local" | "wireguard" — determines which backend handles this tunnel.</summary>
         public string  Source { get; set; } = "local";
-        /// <summary>File path to the .conf or .conf.dpapi file.</summary>
+        /// <summary>File path to the .conf.dpapi file.</summary>
         public string? Path   { get; set; } = null;
         public string  Group  { get; set; } = "";
         public string  Notes  { get; set; } = "";

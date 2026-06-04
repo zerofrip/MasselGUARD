@@ -1,6 +1,6 @@
 # MasselGUARD — How it works
 
-Technical reference for v3.3.0 — Camouflaged Koala. For end-user instructions see [`MANUAL.md`](MANUAL.md).
+Technical reference for v3.5.0 — Hypersonic Quokka. For end-user instructions see [`MANUAL.md`](MANUAL.md).
 
 ---
 
@@ -19,15 +19,16 @@ Technical reference for v3.3.0 — Camouflaged Koala. For end-user instructions 
 11. [Open network protection](#11-open-network-protection)
 12. [Kill switch](#12-kill-switch)
 13. [Configuration and storage](#13-configuration-and-storage)
-14. [Security model](#14-security-model)
-15. [Theme system](#15-theme-system)
-16. [Font override system](#16-font-override-system)
-17. [Logging](#17-logging)
-18. [Settings panel](#18-settings-panel)
-19. [Import / Export settings](#19-import--export-settings)
-20. [Build and deployment](#20-build-and-deployment)
-21. [Troubleshooting](#21-troubleshooting)
-22. [Command-line interface (CLI)](#22-command-line-interface-cli)
+14. [Activity timeline](#14-activity-timeline)
+15. [Security model](#15-security-model)
+16. [Theme system](#16-theme-system)
+17. [Font override system](#17-font-override-system)
+18. [Logging](#18-logging)
+19. [Settings panel](#19-settings-panel)
+20. [Import / Export settings](#20-import--export-settings)
+21. [Build and deployment](#21-build-and-deployment)
+22. [Troubleshooting](#22-troubleshooting)
+23. [Command-line interface (CLI)](#22-command-line-interface-cli)
 
 ---
 
@@ -54,11 +55,15 @@ Program.Main()
         ▼
 MainWindow.Loaded
   ├─ LoadConfig()              %APPDATA%\MasselGUARD\config.json
+  │   └─ MigrateInlineConfigsToFiles()  (one-time: inline Config → .conf.dpapi file)
+  ├─ HistoryService.Load()     %APPDATA%\MasselGUARD\tunnel_history.json
+  ├─ HistoryService.LoadSsid() %APPDATA%\MasselGUARD\wifi_history.json
   ├─ ApplyManualMode()
   ├─ ApplyLocalTunnelMode()
   ├─ SetupTimer()              1-second status poll
   ├─ _startupComplete = true
   ├─ RegisterWifiEvents()      WlanRegisterNotification
+  ├─ TryUpdateWifi()           captures current SSID immediately at startup
   ├─ UpdateThemeToggleIcon()
   ├─ SyncAutoTheme()
   └─ (optional) ShowWizard()   if no config.json existed
@@ -94,10 +99,17 @@ FireIfChanged(ssid, isOpen)
      (deduplicates ACM_CONNECTED + ACM_CONNECTION_COMPLETE)
 
 MainWindow.OnWifiChanged(ssid, isOpen)       [UI thread via Dispatcher.BeginInvoke]
-  ├─ UpdateWifiLabel(ssid)
-  └─ _vm.ApplyWifiState(ssid, isOpen)
-       ├─ null ssid → 2-second debounce → re-query → disconnect or re-apply
-       └─ non-null → log, EvaluateWifi(), ApplyRuleResult()
+  └─ ApplyWifiState(ssid, isOpen)            [central handler — also called by TryUpdateWifi]
+       ├─ if ssid != _lastRecordedSsid:
+       │    StoreWifiHistory? → HistoryService.RecordSsidConnect(ssid, isOpen)
+       │                      → HistoryService.RecordSsidDisconnect() (if null)
+       ├─ UpdateWifiLabel(ssid)
+       └─ _vm.ApplyWifiState(ssid, isOpen)
+            ├─ null ssid → 2-second debounce → re-query → disconnect or re-apply
+            └─ non-null → log, EvaluateWifi(), ApplyRuleResult()
+
+TryUpdateWifi()    [called at startup and by the retry timer]
+  └─ QueryCurrentSsid() → ApplyWifiState()  [records SSID immediately on launch]
 ```
 
 `ReadCurrentSsidFromApi()` reads `WLAN_CONNECTION_ATTRIBUTES` directly from memory:
@@ -303,12 +315,66 @@ KillSwitchService.Disable(tunnelName)
 
 | Path | Format |
 |---|---|
-| `<ExeDir>\tunnels\<n>.conf.dpapi` | DPAPI-encrypted WireGuard config |
+| `%APPDATA%\MasselGUARD\tunnels\<n>.conf.dpapi` | DPAPI-encrypted WireGuard config (one file per tunnel) |
 | `<ExeDir>\tunnels\temp\<n>.conf` | Plaintext copy for service process (~200 ms lifetime) |
+
+`StoredTunnel.Config` (inline DPAPI blob in `config.json`) is legacy. `ConfigService.MigrateInlineConfigsToFiles()` runs on every load and moves any inline blobs to `.conf.dpapi` files, nulling `Config` so it no longer appears in JSON. `TunnelService.SaveConfigToFile(name, plaintext)` writes new files.
+
+### History files
+
+| File | Contents |
+|---|---|
+| `%APPDATA%\MasselGUARD\tunnel_history.json` | `ConnectionHistoryEntry[]` — TunnelName, ConnectedAt (UTC), DisconnectedAt (UTC), Source, SessionRxBytes, SessionTxBytes |
+| `%APPDATA%\MasselGUARD\wifi_history.json` | `WifiHistoryEntry[]` — Ssid, ConnectedAt (UTC), DisconnectedAt (UTC), IsOpen |
+
+Legacy file names (`history.json`, `ssid_history.json`) are renamed to the new names on first load via `File.Move`.
 
 ---
 
-## 14. Security model
+## 14. Activity timeline
+
+### Canvas geometry
+
+Rendered by `RenderChartCore()` into `TimelineCanvas`. Constants: `ChartBarH = 16`, `ChartBarGap = 5`, `ChartSsidGap = 2`.
+
+```
+Y 0–16       Tunnel bar (all tunnels stacked, one bar)
+Y 16–21      Gap
+Y 21–37      WiFi SSID row 0         (rowTop = wifiBandTop + si*(16+2))
+Y 37–55      WiFi SSID row 1
+...
+Y barsH+     Time axis (20 px)
+```
+
+`_chartWifiBandTop` and `_chartSsids` are set each render pass so `MouseMove` can Y-hit-test without recomputing layout.
+
+### Hover tooltip (`TimelineCanvas_MouseMove`)
+
+A **unified tooltip** is shown regardless of Y position. At each X (= hovered time):
+
+1. Loop `_chartData` → add a row for every tunnel session active at that time (name, time range, duration, live KB/s if near-now)
+2. Call `AddWifiRow()` → append a WiFi row if `wifi_history.json` has an entry covering that time (SSID name, 📶, time range, 🔒/⚠)
+
+Tooltip only shown when at least one tunnel or WiFi entry is found. Crosshair always shown.
+
+`GetSsidAt(DateTime t)` converts `t` to UTC before comparing against UTC-stored entries.
+
+### `< >` navigation
+
+`GetNavEntries()` collects all tunnel sessions in the time window. `ShowNavTooltip()` pins a tooltip to the session's midpoint, then calls `AddWifiRow()` to append the WiFi row for that moment.
+
+### Settings — toggle rules
+
+`ApplyInfoSectionMode()` derives panel visibility:
+```
+visible = (ShowTimeline && StoreConnectionHistory)
+       || (ShowWifiInChart && StoreWifiHistory)
+```
+`StoreConnectionHistory` off disables `ShowTimeline` toggle; `StoreWifiHistory` off disables `ShowWifiInChart` toggle. Neither forces the other's Show toggle off.
+
+---
+
+## 15. Security model
 
 ### DPAPI encryption
 
@@ -327,7 +393,7 @@ ACL: `SYSTEM + Administrators + owning user` only. Deleted within ~200 ms.
 
 ---
 
-## 15. Theme system
+## 16. Theme system
 
 Themes live in `theme/<folder>/theme.json`. See `theme/THEME_INFO.md` for the full key reference.
 
@@ -378,7 +444,7 @@ A `DispatcherTimer` counts 10 seconds, then `CancelThemePreview()` loads `_origi
 
 ---
 
-## 16. Font override system
+## 17. Font override system
 
 `ThemeManager.ApplyFontOverride(bool enabled, string family, double size)` injects font resources into `Application.Current.Resources`:
 

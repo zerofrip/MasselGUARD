@@ -319,7 +319,7 @@ namespace MasselGUARD.ViewModels
             OnPropertyChanged(nameof(DnsLeakColor));
             _rxBytes   = 0;
             _txBytes   = 0;
-            _tunnels.Disconnect(StoredTunnel);
+            _tunnels.Disconnect(StoredTunnel, _config.Config);
             RefreshStatus();
         }
     }

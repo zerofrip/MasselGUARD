@@ -62,24 +62,22 @@ namespace MasselGUARD.Views
 
                 if (filePath.EndsWith(".conf.dpapi", StringComparison.OrdinalIgnoreCase))
                 {
-                    // DPAPI-encrypted file — decrypt with current user's key
                     var cipherBytes = File.ReadAllBytes(filePath);
-                    var plainBytes = System.Security.Cryptography.ProtectedData.Unprotect(
-                        cipherBytes, null,
-                        System.Security.Cryptography.DataProtectionScope.CurrentUser);
+                    var plainBytes = ProtectedData.Unprotect(
+                        cipherBytes, null, DataProtectionScope.CurrentUser);
                     text = System.Text.Encoding.UTF8.GetString(plainBytes);
 
-                    // Strip double extension to get tunnel name: "home.conf.dpapi" → "home"
                     var name = Path.GetFileNameWithoutExtension(
                         Path.GetFileNameWithoutExtension(filePath));
-                    TunnelImported?.Invoke(name, text, "local", null);
+                    var storagePath = Services.TunnelService.SaveConfigToFile(name, text);
+                    TunnelImported?.Invoke(name, "", "local", storagePath);
                 }
                 else
                 {
-                    // Plain .conf file
                     text = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
                     var name = Path.GetFileNameWithoutExtension(filePath);
-                    TunnelImported?.Invoke(name, text, "local", null);
+                    var storagePath = Services.TunnelService.SaveConfigToFile(name, text);
+                    TunnelImported?.Invoke(name, "", "local", storagePath);
                 }
                 Close();
             }
@@ -163,7 +161,8 @@ namespace MasselGUARD.Views
 
                 // The QR content is the raw WireGuard config text
                 var name = "QR-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
-                TunnelImported?.Invoke(name, result, "local", null);
+                var storagePath = Services.TunnelService.SaveConfigToFile(name, result);
+                TunnelImported?.Invoke(name, "", "local", storagePath);
                 Close();
             }
             catch (OperationCanceledException) { }

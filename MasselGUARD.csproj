@@ -1,10 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- Exe (console subsystem) so cmd.exe and PowerShell wait for the process
-         to finish in CLI mode.  The GUI launch path immediately calls
-         FreeConsole() — with a prior ShowWindow(SW_HIDE) when Windows created
-         a dedicated console for us — so no console window ever appears. -->
-    <OutputType>Exe</OutputType>
+    <!-- WinExe (GUI subsystem) — Windows never allocates a console, so there
+         is no console flash on launch.  CLI functionality is provided by
+         MasselGUARDcli.exe which uses OutputType=Exe. -->
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
@@ -13,6 +12,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Suppress duplicate assembly attributes caused by the WPF wpftmp build step
+         (OutputType=WinExe).  The wpftmp project generates its own AssemblyInfo using
+         the same -p:Version / -p:InformationalVersion properties from BUILD.bat, so
+         version and build-stamp attributes are still embedded correctly. -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <StartupObject>MasselGUARD.Program</StartupObject>
     <!-- Strip all framework satellite resource folders (tr, ru, fr, de, etc.)
@@ -28,10 +33,10 @@
     <ApplicationIcon>MasselGUARD.ico</ApplicationIcon>
     <!-- Default versions for IDE / dotnet build without BUILD.bat.
          BUILD.bat overrides these via -p:Version / -p:InformationalVersion. -->
-    <Version>3.3.0</Version>
-    <AssemblyVersion>3.3.0.0</AssemblyVersion>
-    <FileVersion>3.3.0.0</FileVersion>
-    <InformationalVersion>3.3.0</InformationalVersion>
+    <Version>3.5.0</Version>
+    <AssemblyVersion>3.5.0.0</AssemblyVersion>
+    <FileVersion>3.5.0.0</FileVersion>
+    <InformationalVersion>3.5.0</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -52,9 +57,11 @@
   <ItemGroup>
     <Content Include="MasselGUARD.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <Content Include="lang\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <!-- tunnel.dll + wireguard.dll enable standalone local tunnels.
          tunnel.dll bundles the WireGuardNT kernel driver — no WireGuard for
@@ -64,9 +71,11 @@
          Both are optional; place them next to the exe to enable local tunnels. -->
     <Content Include="tunnel.dll" Condition="Exists('tunnel.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <Content Include="wireguard.dll" Condition="Exists('wireguard.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
 

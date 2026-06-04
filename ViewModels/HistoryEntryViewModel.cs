@@ -58,5 +58,41 @@ namespace MasselGUARD.ViewModels
                 return $"{(int)span.TotalDays}d {span.Hours:D2}h";
             }
         }
+
+        /// <summary>
+        /// "HH:mm – HH:mm" (same day) or "dd MMM HH:mm – HH:mm" (cross-day).
+        /// Shows "HH:mm – active" for sessions still open.
+        /// </summary>
+        public string TimeRangeDisplay
+        {
+            get
+            {
+                var connLocal = _entry.ConnectedAt.ToLocalTime();
+                if (_entry.DisconnectedAt == null)
+                    return $"{connLocal:HH:mm} – active";
+                var discLocal = _entry.DisconnectedAt.Value.ToLocalTime();
+                return connLocal.Date == discLocal.Date
+                    ? $"{connLocal:HH:mm} – {discLocal:HH:mm}"
+                    : $"{connLocal:dd MMM HH:mm} – {discLocal:dd MMM HH:mm}";
+            }
+        }
+
+        /// <summary>Session traffic totals. "—" when not recorded.</summary>
+        public string TrafficDisplay
+        {
+            get
+            {
+                if (_entry.SessionRxBytes == 0 && _entry.SessionTxBytes == 0) return "—";
+                return $"↑ {FormatBytes(_entry.SessionTxBytes)}  ↓ {FormatBytes(_entry.SessionRxBytes)}";
+            }
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            if (bytes < 1024)              return $"{bytes} B";
+            if (bytes < 1024 * 1024)       return $"{bytes / 1024.0:F1} KB";
+            if (bytes < 1024L * 1024*1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+            return $"{bytes / (1024.0 * 1024 * 1024):F2} GB";
+        }
     }
 }
