@@ -14,7 +14,7 @@ BUILD.bat          # requires .NET 10 SDK; output → dist\
 
 Produces both `dist\MasselGUARD.exe` and `dist\MasselGUARDcli.exe`.
 
-Current version: **3.5.0 — Hypersonic Quokka**
+Current version: **3.6.0 — Dangerous Donkey**
 When bumping version, update **both** `UpdateChecker.cs` (`CurrentVersion` + `_codenames`) **and** `BUILD.bat` (`VERSION` + `CODENAME`).
 
 ## Key design decisions
