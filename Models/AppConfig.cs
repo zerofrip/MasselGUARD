@@ -78,12 +78,8 @@ namespace MasselGUARD.Models
         public double FontOverrideSize    { get; set; } = 0.0;
 
         // ── Theme ────────────────────────────────────────────────────────────
-        public string ActiveTheme      { get; set; } = "default-dark";
-        public string ActiveDarkTheme  { get; set; } = "default-dark";
-        public string ActiveLightTheme { get; set; } = "default-light";
-        public bool   AutoTheme        { get; set; } = false;
-        /// <summary>When false (default) Windows 11 system colors are used; when true the theme-file pickers apply.</summary>
-        public bool   UseCustomTheme   { get; set; } = false;
+        /// <summary>Active theme folder name, or "__system__" for Windows system colours.</summary>
+        public string ActiveTheme { get; set; } = "__system__";
         /// <summary>"auto" (follow Windows) | "light" | "dark"</summary>
         public string SystemThemeMode  { get; set; } = "auto";
         /// <summary>When true (default) clicking ✕ shows a confirm dialog before closing.</summary>
@@ -95,10 +91,12 @@ namespace MasselGUARD.Models
 
         // ── Auto-reconnect ────────────────────────────────────────────────────
         /// <summary>
-        /// When true, MasselGUARD automatically reconnects tunnels that drop
-        /// unexpectedly (e.g. after the machine wakes from sleep).
+        /// Controls when auto-reconnect is active.
+        /// "off"        — disabled globally.
+        /// "per-tunnel" — each tunnel controls its own toggle.
+        /// "always"     — every tunnel reconnects regardless of the per-tunnel toggle.
         /// </summary>
-        public bool AutoReconnect { get; set; } = true;
+        public string AutoReconnectMode { get; set; } = "always";
 
         // ── DNS leak indicator ────────────────────────────────────────────────
         /// <summary>
@@ -152,6 +150,14 @@ namespace MasselGUARD.Models
         ///                the per-tunnel setting.
         /// </summary>
         public string KillSwitchMode { get; set; } = "per-tunnel";
+
+        // ── Validation ────────────────────────────────────────────────────────
+        /// <summary>
+        /// When true, pre-flight WireGuard config validation is skipped for ALL tunnels.
+        /// Overrides the per-tunnel SkipValidation flag. Use only as a last resort
+        /// when a valid-but-unusual config is incorrectly rejected by the validator.
+        /// </summary>
+        public bool SkipTunnelValidation { get; set; } = false;
 
         // ── Update checker ───────────────────────────────────────────────────
         public DateTime LastUpdateCheck    { get; set; } = DateTime.MinValue;
