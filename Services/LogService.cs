@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using MasselGUARD.Models;
 
 namespace MasselGUARD.Services
@@ -13,12 +14,27 @@ namespace MasselGUARD.Services
     public class LogService
     {
         private readonly List<LogEntry> _entries = new();
+        private readonly object _lock = new();
         private LogLevel _minLevel = LogLevel.Ok;
 
-        /// <summary>Raised on the calling thread when a new entry is added.</summary>
+        /// <summary>
+        /// Raised after each new entry is added.
+        /// May be invoked on a background thread — subscribers must marshal to the UI
+        /// thread themselves (e.g. via Dispatcher.BeginInvoke).
+        /// </summary>
         public event Action<LogEntry>? EntryAdded;
 
-        public IReadOnlyList<LogEntry> Entries => _entries;
+        /// <summary>
+        /// Returns a point-in-time snapshot of all entries.
+        /// Safe to call from any thread.
+        /// </summary>
+        public IReadOnlyList<LogEntry> Entries
+        {
+            get { lock (_lock) { return _entries.ToList(); } }
+        }
+
+        /// <summary>Thread-safe entry count (no snapshot allocation).</summary>
+        public int Count { get { lock (_lock) { return _entries.Count; } } }
 
         public LogLevel MinLevel
         {
@@ -37,7 +53,8 @@ namespace MasselGUARD.Services
         {
             if (level < _minLevel) return;
             var entry = new LogEntry(DateTime.Now, level, message, isContinuation);
-            _entries.Add(entry);
+            lock (_lock) { _entries.Add(entry); }
+            // Fire outside the lock — handlers may call back into LogService.
             EntryAdded?.Invoke(entry);
         }
 
@@ -49,12 +66,14 @@ namespace MasselGUARD.Services
         // ── Export ────────────────────────────────────────────────────────────
         public void ExportToFile(string path)
         {
+            IReadOnlyList<LogEntry> snapshot;
+            lock (_lock) { snapshot = _entries.ToList(); }
             using var sw = new StreamWriter(path, append: false,
                 encoding: System.Text.Encoding.UTF8);
-            foreach (var e in _entries)
+            foreach (var e in snapshot)
                 sw.WriteLine($"{e.Timestamp:HH:mm:ss}  [{e.Level,-5}]  {e.Message}");
         }
 
-        public void Clear() => _entries.Clear();
+        public void Clear() { lock (_lock) { _entries.Clear(); } }
     }
 }

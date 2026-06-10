@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using MasselGUARD.Infrastructure;
 using MasselGUARD.Models;
@@ -34,12 +35,49 @@ namespace MasselGUARD.ViewModels
                 OnPropertyChanged(nameof(StatusText));
                 OnPropertyChanged(nameof(ButtonLabel));
                 OnPropertyChanged(nameof(ButtonEnabled));
+                OnPropertyChanged(nameof(ButtonTooltip));
                 OnPropertyChanged(nameof(StatusColor));
                 OnPropertyChanged(nameof(NameColor));
                 OnPropertyChanged(nameof(TrafficVisibility));
                 ConnectCommand.RaiseCanExecuteChanged();
                 DisconnectCommand.RaiseCanExecuteChanged();
             }
+        }
+
+        // ── Transient connection state ────────────────────────────────────────
+        private bool _isConnecting;
+        /// <summary>True while a connect operation is in progress.</summary>
+        public bool IsConnecting
+        {
+            get => _isConnecting;
+            private set
+            {
+                if (!SetField(ref _isConnecting, value)) return;
+                NotifyButtonState();
+            }
+        }
+
+        private bool _isDisconnecting;
+        /// <summary>True while a disconnect operation is in progress.</summary>
+        public bool IsDisconnecting
+        {
+            get => _isDisconnecting;
+            private set
+            {
+                if (!SetField(ref _isDisconnecting, value)) return;
+                NotifyButtonState();
+            }
+        }
+
+        private void NotifyButtonState()
+        {
+            OnPropertyChanged(nameof(StatusText));
+            OnPropertyChanged(nameof(ButtonLabel));
+            OnPropertyChanged(nameof(ButtonEnabled));
+            OnPropertyChanged(nameof(ButtonTooltip));
+            OnPropertyChanged(nameof(StatusColor));
+            ConnectCommand.RaiseCanExecuteChanged();
+            DisconnectCommand.RaiseCanExecuteChanged();
         }
 
         // ── Auto-reconnect flag ───────────────────────────────────────────────
@@ -129,9 +167,11 @@ namespace MasselGUARD.ViewModels
                 _connectedAt = connectedAt;
         }
 
-        public string StatusText    => IsActive
-            ? $"● {UptimeDisplay}"
-            : IsAvailable ? "○ Disconnected" : "Unavailable";
+        public string StatusText =>
+            _isConnecting    ? "◌ Connecting…"    :
+            _isDisconnecting ? "◌ Disconnecting…" :
+            IsActive         ? $"● {UptimeDisplay}" :
+            IsAvailable      ? "○ Disconnected"   : "Unavailable";
 
         // ── Traffic stats ─────────────────────────────────────────────────────
         private long _rxBytes;
@@ -181,13 +221,25 @@ namespace MasselGUARD.ViewModels
                 return $"Connected  {days}d {elapsed.Hours:D2}h {elapsed.Minutes:D2}m";
             }
         }
-        public string ButtonLabel   => IsActive ? "Disconnect" : "Connect";
-        public bool   ButtonEnabled => IsAvailable || IsActive;
-        public string ButtonTooltip => IsActive ? $"Disconnect {Name}" : $"Connect {Name}";
+        public string ButtonLabel =>
+            _isConnecting    ? "Connecting…"    :
+            _isDisconnecting ? "Disconnecting…" :
+            IsActive         ? "Disconnect"     : "Connect";
+
+        public bool ButtonEnabled =>
+            !_isConnecting && !_isDisconnecting && (IsAvailable || IsActive);
+
+        public string ButtonTooltip =>
+            _isConnecting    ? $"Connecting {Name}…"    :
+            _isDisconnecting ? $"Disconnecting {Name}…" :
+            IsActive         ? $"Disconnect {Name}"     : $"Connect {Name}";
 
         public System.Windows.Media.Brush NameColor   => ThemeBrush(IsActive ? "Accent" : "TextPrimary");
         public System.Windows.Media.Brush TypeColor   => ThemeBrush("TextMuted");
-        public System.Windows.Media.Brush StatusColor => ThemeBrush(IsActive ? "Accent" : IsAvailable ? "TextMuted" : "Danger");
+        public System.Windows.Media.Brush StatusColor =>
+            _isConnecting || _isDisconnecting ? ThemeBrush("TextMuted") :
+            IsActive                          ? ThemeBrush("Accent")    :
+            IsAvailable                       ? ThemeBrush("TextMuted") : ThemeBrush("Danger");
         public System.Windows.TextDecorationCollection? NameDecoration => null;
 
         /// <summary>4px colour strip shown before the tunnel name. Transparent when no group colour.</summary>
@@ -269,9 +321,9 @@ namespace MasselGUARD.ViewModels
             _config      = config;
 
             ConnectCommand    = new RelayCommand(DoConnect,
-                () => !_isActive && _isAvailable);
+                () => !_isActive && !_isConnecting && !_isDisconnecting && _isAvailable);
             DisconnectCommand = new RelayCommand(DoDisconnect,
-                () => _isActive);
+                () => _isActive && !_isConnecting && !_isDisconnecting);
         }
 
         public void RefreshStatus()
@@ -301,16 +353,32 @@ namespace MasselGUARD.ViewModels
             if (active) OnPropertyChanged(nameof(StatusText));
         }
 
-        private void DoConnect()
+        private async void DoConnect() => await ConnectAsync();
+
+        /// <summary>
+        /// Awaitable connect — auto-reconnect calls this instead of ConnectCommand so it
+        /// can wait for the result rather than reading IsActive mid-connect.
+        /// </summary>
+        public async Task ConnectAsync()
         {
             UserDisconnected = false;
             string source = PendingConnectSource;
             PendingConnectSource = "Manual"; // consume and reset for next call
-            _tunnels.Connect(StoredTunnel, _config.Config, source);
+            IsConnecting = true;
+            try
+            {
+                // Run on a background thread — companion tunnel connects block for several
+                // seconds (CreateService P/Invoke + WaitForStatus polling).
+                await Task.Run(() => _tunnels.Connect(StoredTunnel, _config.Config, source));
+            }
+            finally
+            {
+                IsConnecting = false;
+            }
             RefreshStatus();
         }
 
-        private void DoDisconnect()
+        private async void DoDisconnect()
         {
             UserDisconnected = true;
             _dnsStatus = TunnelDll.DnsLeakStatus.Unknown;
@@ -319,7 +387,15 @@ namespace MasselGUARD.ViewModels
             OnPropertyChanged(nameof(DnsLeakColor));
             _rxBytes   = 0;
             _txBytes   = 0;
-            _tunnels.Disconnect(StoredTunnel, _config.Config);
+            IsDisconnecting = true;
+            try
+            {
+                await Task.Run(() => _tunnels.Disconnect(StoredTunnel, _config.Config));
+            }
+            finally
+            {
+                IsDisconnecting = false;
+            }
             RefreshStatus();
         }
     }

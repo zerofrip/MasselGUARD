@@ -208,6 +208,33 @@ namespace MasselGUARD.Services
             System.Threading.ThreadPool.QueueUserWorkItem(_ => Save());
         }
 
+        /// <summary>
+        /// Called at startup: closes any open history entries whose tunnel is no longer
+        /// actually running. Covers tunnels that were active when the app crashed or was
+        /// force-killed, and tunnels that have since been deleted from the config.
+        /// <para>
+        /// <paramref name="isRunning"/> is a delegate that returns true when a named tunnel
+        /// is currently active — checked against the live SCM/kernel state, not config.
+        /// </para>
+        /// </summary>
+        public void CloseStaleHistoryEntries(Func<string, bool> isRunning)
+        {
+            bool changed = false;
+            lock (_lock)
+            {
+                foreach (var e in _entries.Where(e => e.DisconnectedAt == null).ToList())
+                {
+                    if (!isRunning(e.TunnelName))
+                    {
+                        e.DisconnectedAt = DateTime.UtcNow;
+                        changed = true;
+                    }
+                }
+            }
+            if (changed)
+                System.Threading.ThreadPool.QueueUserWorkItem(_ => Save());
+        }
+
         /// <summary>Called when a tunnel disconnects (clean disconnect).</summary>
         public void RecordDisconnect(string tunnelName, long sessionRxBytes = 0, long sessionTxBytes = 0)
         {

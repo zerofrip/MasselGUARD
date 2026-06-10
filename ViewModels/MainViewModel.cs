@@ -247,10 +247,11 @@ namespace MasselGUARD.ViewModels
                     // Local tunnel: if the kernel adapter is gone but we still think
                     // it's connected (IsRunning checks in-memory HashSet only),
                     // the adapter must have dropped (e.g. after sleep/wake).
-                    if (t.IsLocal && !stats.AdapterFound && !t.UserDisconnected
-                        && _config.Config.AutoReconnect
+                    bool localDrop = t.IsLocal && !stats.AdapterFound
                         && t.ConnectedAt.HasValue
-                        && (DateTime.UtcNow - t.ConnectedAt.Value).TotalSeconds > 30)
+                        && (DateTime.UtcNow - t.ConnectedAt.Value).TotalSeconds > 30;
+                    if (localDrop && !IsIntentionalDrop(t)
+                        && TunnelService.ShouldAutoReconnect(t.StoredTunnel, _config.Config))
                     {
                         TunnelDll.ForceMarkDisconnected(t.Name);
                         t.RefreshStatus(); // now shows disconnected
@@ -258,17 +259,50 @@ namespace MasselGUARD.ViewModels
                     }
                 }
 
-                // Companion tunnel: service stopped unexpectedly (SCM is the real check).
-                if (!t.IsLocal && wasActive && !nowActive
-                    && !t.UserDisconnected && _config.Config.AutoReconnect)
+                // Companion tunnel connected externally (WireGuard client).
+                if (!t.IsLocal && !wasActive && nowActive && !t.IsConnecting)
                 {
-                    _ = AutoReconnectAsync(t);
+                    string via = _log.IsExtended ? " via WireGuard app" : "";
+                    _log.Ok($"Connected: {t.Name}{via}");
+                    // The external connect supersedes any earlier user disconnect —
+                    // clear the suppression flag so a later external drop is detected.
+                    t.UserDisconnected = false;
+                    _tunnels.RecordExternalConnect(t.Name, "WireGuard app");
+                }
+
+                // Companion tunnel dropped externally (WireGuard client).
+                if (!t.IsLocal && wasActive && !nowActive && !IsIntentionalDrop(t))
+                {
+                    string via = _log.IsExtended ? " via WireGuard app" : "";
+                    // Closes the open history entry and logs "Disconnected: <name>".
+                    _tunnels.RecordExternalDisconnect(t.Name, via);
+
+                    // Only auto-reconnect when the SCM entry still exists (service crashed).
+                    // An absent entry means the WireGuard client deactivated it intentionally.
+                    // The deactivate deletes the entry slightly AFTER stopping the service, so
+                    // this early check can race the deletion — AutoReconnectAsync re-checks
+                    // after its backoff delay and aborts when the entry is gone by then.
+                    var svcName = "WireGuardTunnel$" + t.Name;
+                    bool entryGone = !TunnelService.WireGuardServiceExists(svcName);
+                    if (!entryGone && TunnelService.ShouldAutoReconnect(t.StoredTunnel, _config.Config))
+                        _ = AutoReconnectAsync(t);
                 }
             }
 
             var active = TunnelList.FirstOrDefault(t => t.IsActive);
             ActiveTunnelName = active?.Name ?? "Not connected";
         }
+
+        /// <summary>
+        /// Returns true when the tunnel drop was caused by MasselGUARD itself
+        /// (user click, WiFi rule, CLI) — suppresses auto-reconnect in those cases.
+        /// Checks the TunnelService intentional-disconnect registry first, then falls
+        /// back to the ViewModel's UserDisconnected flag.
+        /// </summary>
+        private bool IsIntentionalDrop(TunnelEntryViewModel vm) =>
+            _tunnels.ConsumeIntentionalDisconnect(vm.Name) || vm.UserDisconnected;
+
+        private const int AutoReconnectMaxAttempts = 3;
 
         private async System.Threading.Tasks.Task AutoReconnectAsync(TunnelEntryViewModel vm)
         {
@@ -281,25 +315,77 @@ namespace MasselGUARD.ViewModels
 
             try
             {
-                _log.Info($"Auto-reconnect: {vm.Name} — tunnel dropped, reconnecting…");
-
-                // Brief pause to let the system settle (network stack, etc.)
-                await System.Threading.Tasks.Task.Delay(2500);
-
-                Application.Current?.Dispatcher.Invoke(() =>
+                // Grace period before announcing anything: the WireGuard client's
+                // deactivate deletes the SCM entry just after stopping the service,
+                // so wait for the deletion to settle. A clean deactivate is then
+                // recognised up front and skipped silently — no reconnect countdown.
+                if (!vm.IsLocal)
                 {
-                    // Only reconnect if the tunnel is still down and the user hasn't
-                    // manually disconnected in the meantime.
-                    if (vm.IsActive || vm.UserDisconnected) return;
+                    await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(2));
+                    if (vm.IsActive) return; // came back up on its own
+                    if (!TunnelService.WireGuardServiceExists("WireGuardTunnel$" + vm.Name))
+                    {
+                        _log.Info($"[AutoReconnect] '{vm.Name}' was deactivated via the WireGuard app — not reconnecting.");
+                        return;
+                    }
+                }
 
-                    vm.PendingConnectSource = "Auto-reconnect";
-                    vm.ConnectCommand.Execute(null);
+                for (int attempt = 1; attempt <= AutoReconnectMaxAttempts; attempt++)
+                {
+                    int delaySec = attempt * 5;   // 5 s, 10 s, 15 s
+                    _log.Info($"[AutoReconnect] '{vm.Name}' dropped — reconnecting in {delaySec}s (attempt {attempt}/{AutoReconnectMaxAttempts})…");
 
-                    if (vm.IsActive)
-                        _log.Ok($"Auto-reconnect: {vm.Name} ✓");
-                    else
-                        _log.Warn($"Auto-reconnect: {vm.Name} — failed");
-                });
+                    await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(delaySec));
+
+                    var dispatcher = Application.Current?.Dispatcher;
+                    if (dispatcher == null) return;
+
+                    bool abort     = false;
+                    bool connected = false;
+                    await dispatcher.InvokeAsync(() =>
+                    {
+                        // Abort if the tunnel came back up on its own, or user disconnected.
+                        if (vm.IsActive || IsIntentionalDrop(vm)) { abort = true; connected = vm.IsActive; return; }
+                        // Also abort if the setting was switched off while waiting.
+                        if (!TunnelService.ShouldAutoReconnect(vm.StoredTunnel, _config.Config)) { abort = true; return; }
+                        // Companion: the WireGuard client's deactivate stops the service first
+                        // and deletes the SCM entry a moment later, so the entry check at
+                        // drop time races the deletion. By now (≥5 s) the deletion is done —
+                        // a missing entry means a deliberate deactivate, not a crash.
+                        if (!vm.IsLocal && !TunnelService.WireGuardServiceExists("WireGuardTunnel$" + vm.Name))
+                        {
+                            abort = true;
+                            _log.Info($"[AutoReconnect] '{vm.Name}' was deactivated via the WireGuard app — not reconnecting.");
+                        }
+                    });
+
+                    if (abort)
+                    {
+                        if (connected)
+                            _log.Ok($"[AutoReconnect] '{vm.Name}' reconnected successfully.");
+                        return;
+                    }
+
+                    // Run the connect on the UI thread and wait for it to actually finish —
+                    // firing ConnectCommand and reading IsActive immediately made every
+                    // attempt report failure while the connect was still in flight.
+                    await await dispatcher.InvokeAsync(() =>
+                    {
+                        vm.PendingConnectSource = "Auto-reconnect";
+                        return vm.ConnectAsync();
+                    });
+                    connected = vm.IsActive;
+
+                    if (connected)
+                    {
+                        _log.Ok($"[AutoReconnect] '{vm.Name}' reconnected successfully.");
+                        return;
+                    }
+
+                    _log.Warn($"[AutoReconnect] '{vm.Name}' — attempt {attempt} failed.");
+                }
+
+                _log.Warn($"[AutoReconnect] '{vm.Name}' — giving up after {AutoReconnectMaxAttempts} attempts.");
             }
             finally
             {
