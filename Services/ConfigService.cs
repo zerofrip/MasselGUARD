@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MasselGUARD.Models;
@@ -93,10 +95,53 @@ namespace MasselGUARD.Services
         // ── Save ─────────────────────────────────────────────────────────────
         public void Save()
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+            var dir = Path.GetDirectoryName(ConfigPath)!;
+            Directory.CreateDirectory(dir);
+            EnsureDirectoryAcl(dir);
             File.WriteAllText(ConfigPath,
                 JsonSerializer.Serialize(Config, JsonOpts));
             ConfigChanged?.Invoke();
+        }
+
+        // ── Directory ACL ─────────────────────────────────────────────────────
+
+        // Applied once per process run; also picks up existing installations
+        // that were created before this hardening was added.
+        private static bool _aclApplied;
+
+        /// <summary>
+        /// Restricts <paramref name="dir"/> (and everything inside it via
+        /// inheritable rules) to the current user only — removes the default
+        /// Administrators read-access inherited from %APPDATA%.
+        /// Safe to call on an already-restricted directory.
+        /// </summary>
+        private static void EnsureDirectoryAcl(string dir)
+        {
+            if (_aclApplied) return;
+            _aclApplied = true;
+            try
+            {
+                var userSid  = WindowsIdentity.GetCurrent().User!;
+                var security = new DirectorySecurity();
+
+                // Block inheritance from %APPDATA% so our explicit rules are the only ones.
+                security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+
+                // Current user: full control, propagates into all subfolders and files.
+                security.AddAccessRule(new FileSystemAccessRule(
+                    userSid,
+                    FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                    PropagationFlags.None,
+                    AccessControlType.Allow));
+
+                new DirectoryInfo(dir).SetAccessControl(security);
+            }
+            catch
+            {
+                // Non-fatal — ACL tightening is best-effort.
+                // Failure here does not affect functionality.
+            }
         }
 
         // ── Export ───────────────────────────────────────────────────────────
@@ -122,9 +167,6 @@ namespace MasselGUARD.Services
                 Mode             = cfg.Mode.ToString(),
                 Language         = cfg.Language,
                 ActiveTheme      = cfg.ActiveTheme,
-                ActiveDarkTheme  = cfg.ActiveDarkTheme,
-                ActiveLightTheme = cfg.ActiveLightTheme,
-                AutoTheme        = cfg.AutoTheme,
                 LogLevelSetting  = cfg.LogLevelSetting,
                 ShowTrayPopupOnSwitch = cfg.ShowTrayPopupOnSwitch,
             };
@@ -167,11 +209,8 @@ namespace MasselGUARD.Services
             Str ("OpenWifiTunnel",    v => Config.OpenWifiTunnel   = v);
             Str ("Language",          v => Config.Language         = v);
             Str ("ActiveTheme",       v => Config.ActiveTheme      = v);
-            Str ("ActiveDarkTheme",   v => Config.ActiveDarkTheme  = v);
-            Str ("ActiveLightTheme",  v => Config.ActiveLightTheme = v);
             Str ("LogLevelSetting",   v => Config.LogLevelSetting  = v);
             Bool("ManualMode",        v => Config.ManualMode       = v);
-            Bool("AutoTheme",         v => Config.AutoTheme        = v);
             Bool("ShowTrayPopupOnSwitch", v => Config.ShowTrayPopupOnSwitch = v);
 
             if (root.TryGetProperty("Rules", out var rulesEl))

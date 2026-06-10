@@ -370,6 +370,25 @@
                                        FontSize="10" Foreground="{DynamicResource TextMuted}"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
+                        <!-- Row 3: Auto-reconnect -->
+                        <StackPanel x:Name="AutoReconnectRow" Orientation="Horizontal" Margin="0,6,0,0">
+                            <ToggleButton x:Name="AutoReconnectToggle"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          Margin="0,0,6,0"/>
+                            <TextBlock x:Name="AutoReconnectToggleLabel"
+                                       Text="🔄 Auto-reconnect"
+                                       FontSize="10" Foreground="{DynamicResource TextMuted}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <!-- Row 4: Skip validation -->
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <ToggleButton x:Name="SkipValidationToggle"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          Margin="0,0,6,0"/>
+                            <TextBlock Text="⚠️ Skip config validation"
+                                       FontSize="10" Foreground="{DynamicResource TextMuted}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                     </StackPanel>
                     <!-- Right: Cancel + Save -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using MasselGUARD.Infrastructure;
 using MasselGUARD.Models;
 using MasselGUARD.Services;
@@ -58,10 +59,9 @@ namespace MasselGUARD.Views
             if (sender is not Button btn) return;
             string tab = btn.Name switch
             {
-                "TabBtnGroups"        => "Groups",
+                "TabBtnTunnels"       => "Tunnels",
+                "TabBtnWifi"          => "Wifi",
                 "TabBtnAppearance"    => "Appearance",
-                "TabBtnDefaultAction" => "DefaultAction",
-                "TabBtnRules"         => "Rules",
                 "TabBtnAdvanced"      => "Advanced",
                 "TabBtnHistory"       => "History",
                 "TabBtnAbout"         => "About",
@@ -72,33 +72,40 @@ namespace MasselGUARD.Views
 
         public void ShowTab(string tab)
         {
+            // Legacy tab names (pre-3.7 layout) map onto the merged pages
+            tab = tab switch
+            {
+                "Groups"        => "Tunnels",
+                "Rules"         => "Wifi",
+                "DefaultAction" => "Wifi",
+                _               => tab,
+            };
+
             _activeTab = tab;
 
-            PageGeneral.Visibility       = tab == "General"       ? Visibility.Visible : Visibility.Collapsed;
-            PageGroups.Visibility        = tab == "Groups"        ? Visibility.Visible : Visibility.Collapsed;
-            PageAppearance.Visibility    = tab == "Appearance"    ? Visibility.Visible : Visibility.Collapsed;
-            PageDefaultAction.Visibility = tab == "DefaultAction" ? Visibility.Visible : Visibility.Collapsed;
-            PageRules.Visibility         = tab == "Rules"         ? Visibility.Visible : Visibility.Collapsed;
-            PageAdvanced.Visibility      = tab == "Advanced"      ? Visibility.Visible : Visibility.Collapsed;
-            PageHistory.Visibility       = tab == "History"       ? Visibility.Visible : Visibility.Collapsed;
-            PageAbout.Visibility         = tab == "About"         ? Visibility.Visible : Visibility.Collapsed;
+            PageGeneral.Visibility    = tab == "General"    ? Visibility.Visible : Visibility.Collapsed;
+            PageTunnels.Visibility    = tab == "Tunnels"    ? Visibility.Visible : Visibility.Collapsed;
+            PageWifi.Visibility       = tab == "Wifi"       ? Visibility.Visible : Visibility.Collapsed;
+            PageAppearance.Visibility = tab == "Appearance" ? Visibility.Visible : Visibility.Collapsed;
+            PageAdvanced.Visibility   = tab == "Advanced"   ? Visibility.Visible : Visibility.Collapsed;
+            PageHistory.Visibility    = tab == "History"    ? Visibility.Visible : Visibility.Collapsed;
+            PageAbout.Visibility      = tab == "About"      ? Visibility.Visible : Visibility.Collapsed;
 
-            TabBtnGeneral.Tag       = tab == "General"       ? "Active" : null;
-            TabBtnGroups.Tag        = tab == "Groups"        ? "Active" : null;
-            TabBtnAppearance.Tag    = tab == "Appearance"    ? "Active" : null;
-            TabBtnDefaultAction.Tag = tab == "DefaultAction" ? "Active" : null;
-            TabBtnRules.Tag         = tab == "Rules"         ? "Active" : null;
-            TabBtnAdvanced.Tag      = tab == "Advanced"      ? "Active" : null;
-            TabBtnHistory.Tag       = tab == "History"       ? "Active" : null;
-            TabBtnAbout.Tag         = tab == "About"         ? "Active" : null;
+            TabBtnGeneral.Tag    = tab == "General"    ? "Active" : null;
+            TabBtnTunnels.Tag    = tab == "Tunnels"    ? "Active" : null;
+            TabBtnWifi.Tag       = tab == "Wifi"       ? "Active" : null;
+            TabBtnAppearance.Tag = tab == "Appearance" ? "Active" : null;
+            TabBtnAdvanced.Tag   = tab == "Advanced"   ? "Active" : null;
+            TabBtnHistory.Tag    = tab == "History"    ? "Active" : null;
+            TabBtnAbout.Tag      = tab == "About"      ? "Active" : null;
 
-            if (tab == "Advanced")   { RefreshInstallState(); RefreshDllStatus(); RefreshWireGuardSection(); ScanOrphans(); PopulateLogLevelPicker(); SyncStartWithWindows(); SyncConfirmOnClose(); SyncAutoReconnect(); SyncShowDnsIndicator(); SyncKsMode(); }
-            if (tab == "History")    RefreshHistoryTab();
-            if (tab == "About")      RefreshUpdateState();
+            if (tab == "General")    { RefreshGroupList(); RefreshModeStatusBox(); SyncStartWithWindows(); SyncConfirmOnClose(); }
+            if (tab == "Tunnels")    { RefreshGroupList(); SyncArMode(); SyncKsMode(); SyncSkipTunnelValidation(); SyncShowDnsIndicator(); }
+            if (tab == "Wifi")       RefreshAutomationControls();
             if (tab == "Appearance") PopulateThemePicker();
-            if (tab == "General")    { RefreshGroupList(); RefreshModeStatusBox(); }
-            if (tab == "Groups")     RefreshGroupList();
-            if (tab == "Rules" || tab == "DefaultAction") RefreshAutomationControls();
+            if (tab == "History")    RefreshHistoryTab();
+            if (tab == "Advanced")   { RefreshInstallState(); RefreshDllStatus(); RefreshWireGuardSection(); ScanOrphans(); PopulateLogLevelPicker(); }
+            if (tab == "About")      RefreshUpdateState();
         }
 
         private void RefreshCurrentTab() => ShowTab(_activeTab);
@@ -168,8 +175,8 @@ namespace MasselGUARD.Views
             // ── General tab controls ──────────────────────────────────────────
             if (LanguagePicker != null && LanguagePicker.Items.Count == 0)
             {
-                foreach (var (code, name) in Lang.AvailableLanguages())
-                    LanguagePicker.Items.Add(new LangItem(code, name));
+                foreach (var (code, name, flag) in Lang.AvailableLanguages())
+                    LanguagePicker.Items.Add(new LangItem(code, name, flag));
             }
             if (LanguagePicker != null)
                 LanguagePicker.SelectedItem = LanguagePicker.Items
@@ -489,43 +496,17 @@ namespace MasselGUARD.Views
         {
             _themeSwitching = true;
 
-            // Exclude virtual/built-in entries from the custom pickers:
-            //   __system__   — hardcoded Windows palette (used when UseCustomTheme=false)
-            //   windows-dark / windows-light — same palette shipped as theme files; not user-selectable
-            var allThemes = ThemeManager.AvailableThemes()
-                .Where(f => f != "__system__" && f != "windows-dark" && f != "windows-light")
-                .ToList();
-
-            string GetType(string folder) {
-                try {
-                    var def = System.Text.Json.JsonSerializer.Deserialize<ThemeDefinition>(
-                        System.IO.File.ReadAllText(System.IO.Path.Combine(
-                            AppContext.BaseDirectory, "theme", folder, "theme.json")),
-                        new System.Text.Json.JsonSerializerOptions{PropertyNameCaseInsensitive=true});
-                    return def?.Type ?? "dark";
-                } catch { return "dark"; }
+            if (ThemePicker != null)
+            {
+                ThemePicker.Items.Clear();
+                foreach (var f in ThemeManager.AvailableThemes())
+                    ThemePicker.Items.Add(new ThemePickerItem(f, ThemeManager.GetThemeDisplayName(f)));
+                ThemePicker.SelectedItem = ThemePicker.Items
+                    .OfType<ThemePickerItem>()
+                    .FirstOrDefault(i => i.FolderName == _draft.ActiveTheme);
+                if (ThemePicker.SelectedItem == null && ThemePicker.Items.Count > 0)
+                    ThemePicker.SelectedIndex = 0;
             }
-
-            var dark  = allThemes.Where(f => GetType(f) == "dark").ToList();
-            var light = allThemes.Where(f => GetType(f) == "light").ToList();
-
-            DarkThemePicker.Items.Clear();
-            foreach (var f in dark)
-                DarkThemePicker.Items.Add(new ThemePickerItem(f, ThemeManager.GetThemeDisplayName(f)));
-            DarkThemePicker.SelectedItem = DarkThemePicker.Items
-                .OfType<ThemePickerItem>()
-                .FirstOrDefault(i => i.FolderName == _draft.ActiveDarkTheme);
-            if (DarkThemePicker.SelectedItem == null && DarkThemePicker.Items.Count > 0)
-                DarkThemePicker.SelectedIndex = 0;
-
-            LightThemePicker.Items.Clear();
-            foreach (var f in light)
-                LightThemePicker.Items.Add(new ThemePickerItem(f, ThemeManager.GetThemeDisplayName(f)));
-            LightThemePicker.SelectedItem = LightThemePicker.Items
-                .OfType<ThemePickerItem>()
-                .FirstOrDefault(i => i.FolderName == _draft.ActiveLightTheme);
-            if (LightThemePicker.SelectedItem == null && LightThemePicker.Items.Count > 0)
-                LightThemePicker.SelectedIndex = 0;
 
             // System mode pills
             _loading = true;
@@ -534,17 +515,6 @@ namespace MasselGUARD.Views
             if (SysModeDark  != null) SysModeDark.IsChecked  = sysMode == "dark";
             if (SysModeAuto  != null) SysModeAuto.IsChecked  = sysMode != "light" && sysMode != "dark";
             _loading = false;
-
-            // Custom theme toggle + pickers panel visibility
-            if (CustomThemeToggle != null)
-            {
-                _loading = true;
-                CustomThemeToggle.IsChecked = _draft.UseCustomTheme;
-                _loading = false;
-            }
-            if (CustomThemePickersPanel != null)
-                CustomThemePickersPanel.Visibility =
-                    _draft.UseCustomTheme ? Visibility.Visible : Visibility.Collapsed;
 
             // Tray popup toggle
             if (TrayPopupToggle != null)
@@ -576,30 +546,6 @@ namespace MasselGUARD.Views
             _themeSwitching = false;
         }
 
-        private void DarkThemePicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_loading || _themeSwitching) return;
-            if (DarkThemePicker.SelectedItem is ThemePickerItem item)
-            {
-                _draft.ActiveDarkTheme = item.FolderName;
-                _vm.ActiveDarkTheme    = item.FolderName;
-                // Changing selection cancels any running preview so the user sees
-                // the previous (committed) look before clicking Preview again.
-                if (_themePreviewActive) CancelThemePreview();
-            }
-        }
-
-        private void LightThemePicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_loading || _themeSwitching) return;
-            if (LightThemePicker.SelectedItem is ThemePickerItem item)
-            {
-                _draft.ActiveLightTheme = item.FolderName;
-                _vm.ActiveLightTheme    = item.FolderName;
-                if (_themePreviewActive) CancelThemePreview();
-            }
-        }
-
         /// <summary>Returns true when the current draft SystemThemeMode resolves to dark.</summary>
         private bool IsDraftDark() => (_draft.SystemThemeMode ?? "auto") switch
         {
@@ -613,23 +559,22 @@ namespace MasselGUARD.Views
             if (_loading || _themeSwitching) return;
             if (sender is not RadioButton rb || rb.Tag is not string tag) return;
             _draft.SystemThemeMode = tag;
-            // No live apply — user clicks a preview button to see the result.
             if (_themePreviewActive) CancelThemePreview();
         }
 
-        private void CustomTheme_Changed(object sender, RoutedEventArgs e)
+        private void ThemePicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_loading || _themeSwitching) return;
-            bool on = CustomThemeToggle?.IsChecked == true;
-            _draft.UseCustomTheme = on;
-            if (CustomThemePickersPanel != null)
-                CustomThemePickersPanel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-            // No live apply — user clicks a preview button to see the result.
-            if (_themePreviewActive) CancelThemePreview();
+            if (ThemePicker.SelectedItem is ThemePickerItem item)
+            {
+                _draft.ActiveTheme = item.FolderName;
+                _vm.ActiveTheme    = item.FolderName;
+                if (_themePreviewActive) CancelThemePreview();
+            }
         }
 
         // ── Theme live-preview ────────────────────────────────────────────────
-        private Button? _themePreviewSourceBtn = null;   // which button is counting down
+        private Button? _themePreviewSourceBtn = null;
 
         private void DarkThemePreview_Click(object sender, RoutedEventArgs e)
             => StartThemePreview(forceLight: false, DarkThemePreviewBtn);
@@ -639,15 +584,11 @@ namespace MasselGUARD.Views
 
         private void StartThemePreview(bool forceLight, Button sourceBtn)
         {
-            // Clicking the already-active button cancels it.
             if (_themePreviewActive && _themePreviewSourceBtn == sourceBtn)
             { CancelThemePreview(); return; }
-
-            // Clicking the other button while one is running: cancel first, then start.
             if (_themePreviewActive) CancelThemePreview();
 
             ApplySpecificTheme(forceLight);
-
             _themePreviewActive      = true;
             _themePreviewSecondsLeft = 10;
             _themePreviewSourceBtn   = sourceBtn;
@@ -660,33 +601,21 @@ namespace MasselGUARD.Views
             _themePreviewTimer.Tick += (_, _) =>
             {
                 _themePreviewSecondsLeft--;
-                if (_themePreviewSecondsLeft <= 0)
-                    CancelThemePreview();
-                else
-                    UpdateThemePreviewBtn();
+                if (_themePreviewSecondsLeft <= 0) CancelThemePreview();
+                else UpdateThemePreviewBtn();
             };
             _themePreviewTimer.Start();
         }
 
-        /// <summary>
-        /// Loads the draft dark or light theme file directly — regardless of the current system mode.
-        /// Lets the user preview the light theme even while Windows is in dark mode and vice versa.
-        /// </summary>
         private void ApplySpecificTheme(bool forceLight)
         {
-            if (!_draft.UseCustomTheme)
-            {
-                ThemeManager.Instance.LoadSystem(!forceLight);  // false = dark, true = light
-            }
+            bool isDark = !forceLight;
+            var target = _draft.ActiveTheme;
+            if (string.IsNullOrEmpty(target) || target == "__system__")
+                ThemeManager.Instance.LoadSystem(isDark);
             else
-            {
-                var target = forceLight ? _draft.ActiveLightTheme : _draft.ActiveDarkTheme;
-                if (!string.IsNullOrEmpty(target))
-                    try { ThemeManager.Instance.Load(target); } catch { }
-                else
-                    ThemeManager.Instance.LoadSystem(!forceLight);
-            }
-            // Apply draft font so the full preview is representative.
+                try { ThemeManager.Instance.Load(target, isDark); } catch { }
+
             ThemeManager.ApplyFontOverride(
                 _draft.FontOverrideEnabled,
                 _draft.FontOverrideFamily,
@@ -699,32 +628,18 @@ namespace MasselGUARD.Views
             _themePreviewTimer     = null;
             _themePreviewActive    = false;
             _themePreviewSourceBtn = null;
-
-            // Revert to the last saved theme + font (handles system colours and custom
-            // theme files correctly, regardless of what was active before Settings opened).
             _main.ApplyThemeFromConfig();
-
             UpdateThemePreviewBtn();
         }
 
         private void UpdateThemePreviewBtn()
         {
-            // Reset both buttons to idle state first.
-            void ResetBtn(Button? btn)
-            {
-                if (btn == null) return;
-                btn.Content    = "▶  Preview";
-                btn.Foreground = (System.Windows.Media.Brush)FindResource("TextMuted");
-            }
-            ResetBtn(DarkThemePreviewBtn);
-            ResetBtn(LightThemePreviewBtn);
-
-            // Light up whichever button is currently counting down.
+            if (DarkThemePreviewBtn  != null) { DarkThemePreviewBtn.Content  = "▶  Dark";  DarkThemePreviewBtn.Foreground  = (System.Windows.Media.Brush)FindResource("TextMuted"); }
+            if (LightThemePreviewBtn != null) { LightThemePreviewBtn.Content = "▶  Light"; LightThemePreviewBtn.Foreground = (System.Windows.Media.Brush)FindResource("TextMuted"); }
             if (_themePreviewActive && _themePreviewSourceBtn != null)
             {
                 _themePreviewSourceBtn.Content    = $"↩  {_themePreviewSecondsLeft}s";
-                _themePreviewSourceBtn.Foreground =
-                    (System.Windows.Media.Brush)FindResource("Accent");
+                _themePreviewSourceBtn.Foreground = (System.Windows.Media.Brush)FindResource("Accent");
             }
         }
 
@@ -969,7 +884,7 @@ namespace MasselGUARD.Views
             }
         }
 
-        // ── Default Action tab ────────────────────────────────────────────────
+        // ── WiFi tab (rules + default action + open network) ─────────────────
         private void RefreshAutomationControls()
         {
             var cfg = _draft;
@@ -1076,7 +991,6 @@ namespace MasselGUARD.Views
             _vm.OpenWifiTunnel = sel == none ? "" : sel ?? "";
         }
 
-        // ── WiFi Rules tab ────────────────────────────────────────────────────
         private void ManualMode_Changed(object sender, RoutedEventArgs e)
         {
             if (_loading) return;
@@ -1248,12 +1162,6 @@ namespace MasselGUARD.Views
                 row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
                     { Width = GridLength.Auto });
 
-                // Show tunnel name + service name + running/stopped badge
-                string statusBadge = o.TunnelActive ? "● Running" : "○ Stopped";
-                var statusColor = o.TunnelActive
-                    ? (System.Windows.Media.Brush)Application.Current.Resources["Danger"]
-                    : (System.Windows.Media.Brush)Application.Current.Resources["TextMuted"];
-
                 var namePanel = new System.Windows.Controls.StackPanel
                     { Orientation = System.Windows.Controls.Orientation.Vertical,
                       VerticalAlignment = VerticalAlignment.Center };
@@ -1265,9 +1173,9 @@ namespace MasselGUARD.Views
                 });
                 namePanel.Children.Add(new System.Windows.Controls.TextBlock
                 {
-                    Text       = $"{o.ServiceName}  ·  {statusBadge}",
+                    Text       = $"{o.ServiceName}  ·  ○ Stopped",
                     FontSize   = 9,
-                    Foreground = statusColor,
+                    Foreground = (System.Windows.Media.Brush)Application.Current.Resources["TextMuted"],
                 });
                 System.Windows.Controls.Grid.SetColumn(namePanel, 0);
 
@@ -1477,10 +1385,9 @@ namespace MasselGUARD.Views
             }
 
             // What's New inline panel — fetch from GitHub; fall back to local file.
-            if (WhatsNewText != null && !_whatsNewLoaded)
+            if (WhatsNewBox != null && !_whatsNewLoaded)
             {
-                _whatsNewLoaded   = true;
-                WhatsNewText.Text = "Loading…";
+                _whatsNewLoaded = true;
                 _ = LoadWhatsNewAsync();
             }
 
@@ -1654,18 +1561,22 @@ namespace MasselGUARD.Views
             _draft.ConfirmOnClose = ConfirmOnCloseToggle?.IsChecked == true;
         }
 
-        private void SyncAutoReconnect()
+        private void SyncArMode()
         {
-            if (AutoReconnectToggle == null) return;
+            if (ArModeOff == null) return;
             _loading = true;
-            AutoReconnectToggle.IsChecked = _draft.AutoReconnect;
+            var mode = _draft.AutoReconnectMode ?? "off";
+            ArModeOff.IsChecked        = mode == "off";
+            ArModePerTunnel.IsChecked  = mode == "per-tunnel";
+            ArModeAlways.IsChecked     = mode == "always";
             _loading = false;
         }
 
-        private void AutoReconnect_Changed(object sender, System.Windows.RoutedEventArgs e)
+        private void ArMode_Changed(object sender, System.Windows.RoutedEventArgs e)
         {
             if (_loading) return;
-            _draft.AutoReconnect = AutoReconnectToggle?.IsChecked == true;
+            if (sender is System.Windows.Controls.RadioButton rb && rb.Tag is string tag)
+                _draft.AutoReconnectMode = tag;
         }
 
         private void SyncShowDnsIndicator()
@@ -1697,6 +1608,20 @@ namespace MasselGUARD.Views
             if (_loading) return;
             if (sender is System.Windows.Controls.RadioButton rb && rb.Tag is string tag)
                 _draft.KillSwitchMode = tag;
+        }
+
+        private void SyncSkipTunnelValidation()
+        {
+            if (SkipTunnelValidationToggle == null) return;
+            _loading = true;
+            SkipTunnelValidationToggle.IsChecked = _draft.SkipTunnelValidation;
+            _loading = false;
+        }
+
+        private void SkipTunnelValidation_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_loading) return;
+            _draft.SkipTunnelValidation = SkipTunnelValidationToggle?.IsChecked == true;
         }
 
         private void InstallBtn_Click(object sender, System.Windows.RoutedEventArgs e)
@@ -1736,13 +1661,30 @@ namespace MasselGUARD.Views
         }
 
         /// <summary>
-        /// Fetches WHATSNEW.md from the GitHub repo. Falls back to the local copy
-        /// shipped alongside the exe. Updates WhatsNewText on the UI thread.
+        /// Fetches WHATSNEW.md from the GitHub repo and renders it as a FlowDocument
+        /// in WhatsNewBox. Falls back to the error panel when the network is unavailable.
         /// </summary>
         private async System.Threading.Tasks.Task LoadWhatsNewAsync()
         {
             const string RemoteUrl =
                 "https://raw.githubusercontent.com/masselink/MasselGUARD/main/docs/WHATSNEW.md";
+
+            // Resolve theme resources before the async gap (we're on the UI thread here)
+            var fontFamily  = TryFindResource("Theme.FontFamily") as System.Windows.Media.FontFamily
+                              ?? new System.Windows.Media.FontFamily("Segoe UI");
+            var textBrush   = (TryFindResource("TextPrimary") as System.Windows.Media.Brush)
+                              ?? System.Windows.Media.Brushes.White;
+            var mutedBrush  = (TryFindResource("TextMuted")   as System.Windows.Media.Brush)
+                              ?? System.Windows.Media.Brushes.Gray;
+            var accentBrush = (TryFindResource("Accent")      as System.Windows.Media.Brush)
+                              ?? System.Windows.Media.Brushes.CornflowerBlue;
+            var codeBgBrush = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(40, 128, 128, 128));
+
+            // Show a "Loading…" document immediately
+            WhatsNewBox.Document  = MarkdownToFlowDocument.MakeSimple("Loading…", fontFamily, 10, mutedBrush);
+            WhatsNewBox.Visibility            = Visibility.Visible;
+            WhatsNewErrorPanel.Visibility     = Visibility.Collapsed;
 
             string? text = null;
 
@@ -1756,16 +1698,17 @@ namespace MasselGUARD.Views
             }
             catch { /* network unavailable */ }
 
-            // Update the UI (we're back on the UI thread — no ConfigureAwait(false) used)
+            // Back on the UI thread — no ConfigureAwait(false) used
             if (text != null)
             {
-                WhatsNewText.Text             = text;
-                WhatsNewScroll.Visibility     = Visibility.Visible;
+                WhatsNewBox.Document          = MarkdownToFlowDocument.Render(
+                    text, fontFamily, 10, textBrush, mutedBrush, accentBrush, codeBgBrush);
+                WhatsNewBox.Visibility        = Visibility.Visible;
                 WhatsNewErrorPanel.Visibility = Visibility.Collapsed;
             }
             else
             {
-                WhatsNewScroll.Visibility     = Visibility.Collapsed;
+                WhatsNewBox.Visibility        = Visibility.Collapsed;
                 WhatsNewErrorPanel.Visibility = Visibility.Visible;
             }
         }
@@ -1776,15 +1719,15 @@ namespace MasselGUARD.Views
         private bool         _whatsNewLoaded           = false;  // Fetch once per session
         private ReleaseInfo? _latestRelease;                     // Cached from last CheckNow — needed by DoUpdate button
 
-        // ── Font live-preview timer ───────────────────────────────────────────
-        private System.Windows.Threading.DispatcherTimer? _fontPreviewTimer;
-        private int  _fontPreviewSecondsLeft;
-        private bool _fontPreviewActive;
-
         // ── Theme live-preview timer ──────────────────────────────────────────
         private System.Windows.Threading.DispatcherTimer? _themePreviewTimer;
         private int  _themePreviewSecondsLeft;
         private bool _themePreviewActive;
+
+        // ── Font live-preview timer ───────────────────────────────────────────
+        private System.Windows.Threading.DispatcherTimer? _fontPreviewTimer;
+        private int  _fontPreviewSecondsLeft;
+        private bool _fontPreviewActive;
 
         private void SaveBtn_Click(object sender, System.Windows.RoutedEventArgs e)
         {
@@ -1808,12 +1751,13 @@ namespace MasselGUARD.Views
             _main.ConfigSvc.Config.StoreWifiHistory        = _draft.StoreWifiHistory;
             _main.ConfigSvc.Config.ShowWifiInChart         = _draft.ShowWifiInChart;
             _main.ConfigSvc.Config.NotificationDurationSeconds = _draft.NotificationDurationSeconds;
-            _main.ConfigSvc.Config.UseCustomTheme      = _draft.UseCustomTheme;
+            _main.ConfigSvc.Config.ActiveTheme         = _draft.ActiveTheme;
             _main.ConfigSvc.Config.SystemThemeMode     = _draft.SystemThemeMode;
             _main.ConfigSvc.Config.ConfirmOnClose      = _draft.ConfirmOnClose;
-            _main.ConfigSvc.Config.AutoReconnect       = _draft.AutoReconnect;
+            _main.ConfigSvc.Config.AutoReconnectMode   = _draft.AutoReconnectMode;
             _main.ConfigSvc.Config.ShowDnsIndicator    = _draft.ShowDnsIndicator;
             _main.ConfigSvc.Config.KillSwitchMode      = _draft.KillSwitchMode;
+            _main.ConfigSvc.Config.SkipTunnelValidation = _draft.SkipTunnelValidation;
             _main.ConfigSvc.Config.FontOverrideEnabled    = _draft.FontOverrideEnabled;
             _main.ConfigSvc.Config.FontOverrideFamily    = _draft.FontOverrideFamily;
             _main.ConfigSvc.Config.FontOverrideSize      = _draft.FontOverrideSize;
@@ -1823,11 +1767,11 @@ namespace MasselGUARD.Views
             _vm.TunnelGroups.Clear();
             foreach (var g in _draft.TunnelGroups) _vm.TunnelGroups.Add(g);
 
-            _vm.DoSave();
-
-            // Log only changed fields now that config is fully committed
+            // Log changed fields before DoSave so detail lines appear below "Settings saved" in the log
             if (_main.LogSvc.IsExtended)
                 LogChangedSettings(before, _main.ConfigSvc.Config);
+
+            _vm.DoSave();
             // Apply side effects immediately
             Lang.Instance.Load(_vm.Language);
             _main.LogSvc.IsExtended = _vm.LogLevel == "extended";
@@ -1860,10 +1804,7 @@ namespace MasselGUARD.Views
             Check("Default action",        before.DefaultAction,         after.DefaultAction);
             Check("Default tunnel",        before.DefaultTunnel,         after.DefaultTunnel);
             Check("Open network",          before.OpenWifiTunnel,        after.OpenWifiTunnel);
-            Check("Theme (dark)",          before.ActiveDarkTheme,       after.ActiveDarkTheme);
-            Check("Theme (light)",         before.ActiveLightTheme,      after.ActiveLightTheme);
-            Check("Auto theme",            before.AutoTheme,             after.AutoTheme);
-            Check("Custom theme",          before.UseCustomTheme,        after.UseCustomTheme);
+            Check("Theme",                 before.ActiveTheme,           after.ActiveTheme);
             Check("System theme mode",     before.SystemThemeMode,       after.SystemThemeMode);
             Check("Log level",             before.LogLevelSetting,       after.LogLevelSetting);
             Check("Tray popups",           before.ShowTrayPopupOnSwitch, after.ShowTrayPopupOnSwitch);
@@ -1875,6 +1816,7 @@ namespace MasselGUARD.Views
             Check("Default group",         before.DefaultGroup,          after.DefaultGroup);
             Check("Show DNS indicator",    before.ShowDnsIndicator,      after.ShowDnsIndicator);
             Check("Kill switch mode",      before.KillSwitchMode,        after.KillSwitchMode);
+            Check("Auto-reconnect mode",   before.AutoReconnectMode,     after.AutoReconnectMode);
             Check("Font override",         before.FontOverrideEnabled,   after.FontOverrideEnabled);
             Check("Font family",           before.FontOverrideFamily,    after.FontOverrideFamily);
             Check("Font size",             before.FontOverrideSize,      after.FontOverrideSize);
@@ -1961,13 +1903,13 @@ namespace MasselGUARD.Views
         {
             base.OnClosing(e);
             // Always stop any running preview timers — regardless of save/cancel.
-            _fontPreviewTimer?.Stop();
-            _fontPreviewTimer   = null;
-            _fontPreviewActive  = false;
             _themePreviewTimer?.Stop();
             _themePreviewTimer     = null;
             _themePreviewActive    = false;
             _themePreviewSourceBtn = null;
+            _fontPreviewTimer?.Stop();
+            _fontPreviewTimer   = null;
+            _fontPreviewActive  = false;
             // If closed without saving, revert any live previews.
             if (!_savedSuccessfully)
             {

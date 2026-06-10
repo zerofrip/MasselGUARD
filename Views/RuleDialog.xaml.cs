@@ -106,7 +106,7 @@ namespace MasselGUARD.Views
             var border = new Border
             {
                 Background      = Res("WindowBg"),
-                BorderBrush     = Res("BorderColor"),
+                BorderBrush     = Res("Accent"),
                 BorderThickness = new Thickness(1),
                 CornerRadius    = Application.Current.Resources["Theme.CornerRadius"] is CornerRadius cr ? cr : new CornerRadius(6),
                 Padding         = new Thickness(20),

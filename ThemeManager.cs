@@ -59,7 +59,7 @@ namespace MasselGUARD
 
         public event EventHandler? ThemeChanged;
 
-        public string          CurrentThemeName { get; private set; } = "default-dark";
+        public string          CurrentThemeName { get; private set; } = "__system__";
         public ThemeDefinition Current          { get; private set; } = ThemeDefinition.Default;
 
         // ── Paths ─────────────────────────────────────────────────────────────
@@ -71,8 +71,37 @@ namespace MasselGUARD
                 ?? AppContext.BaseDirectory,
                 "theme");
 
-        public static string ThemeFolder(string name) => Path.Combine(ThemeRoot, name);
-        private static string ThemeJson(string name)  => Path.Combine(ThemeFolder(name), "theme.json");
+        /// <summary>
+        /// User-created themes live here so they survive app reinstalls.
+        /// %APPDATA%\MasselGUARD\themes\
+        /// </summary>
+        public static string UserThemeRoot =>
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MasselGUARD", "themes");
+
+        /// <summary>Folder names of themes that ship with the app (read-only in the builder).</summary>
+        public static readonly HashSet<string> BuiltinThemeNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "grey", "highcontrast"
+        };
+
+        /// <summary>Returns true for the virtual system theme and all bundled built-in themes.</summary>
+        public static bool IsBuiltinTheme(string name) =>
+            name is "__system__" or "system" || BuiltinThemeNames.Contains(name);
+
+        /// <summary>
+        /// Returns the folder for a theme, checking user themes first so custom themes
+        /// can shadow built-ins by name (though this is unlikely in practice).
+        /// </summary>
+        public static string ThemeFolder(string name)
+        {
+            var user = Path.Combine(UserThemeRoot, name);
+            if (Directory.Exists(user)) return user;
+            return Path.Combine(ThemeRoot, name);
+        }
+
+        private static string ThemeJson(string name) => Path.Combine(ThemeFolder(name), "theme.json");
 
         // ── Public API ────────────────────────────────────────────────────────
 
@@ -83,12 +112,26 @@ namespace MasselGUARD
         public static List<string> AvailableThemes()
         {
             var themes = new List<string> { "__system__" };   // virtual — Windows system colours
-            var root   = ThemeRoot;
+
+            // Built-in themes from exe folder
+            var root = ThemeRoot;
             if (Directory.Exists(root))
                 themes.AddRange(Directory.GetDirectories(root)
                     .Select(d => Path.GetFileName(d)!)
                     .Where(n => File.Exists(Path.Combine(root, n, "theme.json")))
                     .OrderBy(n => n));
+
+            // User-created themes from AppData (skip duplicates)
+            var userRoot = UserThemeRoot;
+            if (Directory.Exists(userRoot))
+                foreach (var dir in Directory.GetDirectories(userRoot).OrderBy(d => d))
+                {
+                    var name = Path.GetFileName(dir)!;
+                    if (!themes.Contains(name) &&
+                        File.Exists(Path.Combine(userRoot, name, "theme.json")))
+                        themes.Add(name);
+                }
+
             return themes;
         }
 
@@ -111,38 +154,325 @@ namespace MasselGUARD
             catch { return folderName; }
         }
 
-        /// <summary>Loads a theme by folder name and applies it live to Application.Resources.</summary>
+        /// <summary>
+        /// Loads a theme by folder name and applies it live to Application.Resources.
+        /// <paramref name="isDark"/> controls which variant block is merged when the
+        /// JSON contains a "dark" or "light" section.
+        /// </summary>
+        public void Load(string themeName, bool isDark)
+        {
+            if (themeName is "__system__" or "system") { LoadSystem(isDark); return; }
+            var def = ReadTheme(themeName);
+            if (def == null) { LoadSystem(isDark); return; }
+            ApplyTheme(themeName, def, isDark);
+        }
+
+        /// <summary>
+        /// Backward-compatible overload: derives dark/light from the theme's own
+        /// <c>Type</c> field.  Prefer <see cref="Load(string,bool)"/> when the
+        /// caller already knows which mode is active.
+        /// </summary>
         public void Load(string themeName)
         {
-            // ── Virtual theme: use Windows system colours ─────────────────────
-            if (themeName is "__system__" or "system")
-            {
-                LoadSystem(GetSystemIsDark());
-                return;
-            }
+            if (themeName is "__system__" or "system") { LoadSystem(GetSystemIsDark()); return; }
+            var def = ReadTheme(themeName);
+            if (def == null) { LoadSystem(GetSystemIsDark()); return; }
+            bool isDark = !def.Type.Equals("light", StringComparison.OrdinalIgnoreCase);
+            ApplyTheme(themeName, def, isDark);
+        }
 
+        // ── Internal helpers ──────────────────────────────────────────────────
+
+        private static ThemeDefinition? ReadTheme(string themeName)
+        {
             var jsonPath = ThemeJson(themeName);
-            ThemeDefinition def;
             if (File.Exists(jsonPath))
             {
                 try
                 {
                     var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                    def = JsonSerializer.Deserialize<ThemeDefinition>(File.ReadAllText(jsonPath), opts)
-                          ?? ThemeDefinition.Default;
+                    return JsonSerializer.Deserialize<ThemeDefinition>(File.ReadAllText(jsonPath), opts);
                 }
-                catch { def = ThemeDefinition.Default; }
+                catch { }
             }
-            else { def = ThemeDefinition.Default; }
+            return null;
+        }
+
+        private void ApplyTheme(string themeName, ThemeDefinition def, bool isDark)
+        {
+            ThemeDefinition resolved;
+            var variant = isDark ? def.Dark : def.Light;
+
+            if (variant != null)
+            {
+                // Explicit variant defined — use it.
+                resolved = MergeVariant(def, variant);
+            }
+            else
+            {
+                // No explicit variant for this mode — try the other side and invert it,
+                // or fall back to root (backward compat: old single-file themes with
+                // colours at root level and no dark/light sections).
+                var otherVariant = isDark ? def.Light : def.Dark;
+                if (otherVariant != null)
+                {
+                    var otherResolved = MergeVariant(def, otherVariant);
+                    resolved = AutoInvertVariant(otherResolved);
+                }
+                else
+                {
+                    resolved = def;   // legacy single-variant file; system palette fills blanks
+                }
+            }
 
             CurrentThemeName = themeName;
-            Current          = def;
-            Apply(def, ThemeFolder(themeName));
+            Current          = resolved;
+            Apply(resolved, ThemeFolder(themeName), isDark);
             ThemeChanged?.Invoke(this, EventArgs.Empty);
         }
 
+        /// <summary>
+        /// Returns a new ThemeDefinition that uses <paramref name="root"/> for all
+        /// structural settings (font, chrome, layout) and overlays non-empty color
+        /// strings from <paramref name="variant"/>.
+        /// </summary>
+        private static ThemeDefinition MergeVariant(ThemeDefinition root, ThemeDefinition variant)
+        {
+            static string O(string v, string b) => !string.IsNullOrEmpty(v) ? v : b;
+            return new ThemeDefinition
+            {
+                // Structural: always from root
+                Name              = root.Name,
+                AppName           = root.AppName,
+                Type              = root.Type,
+                Creator           = root.Creator,
+                Description       = root.Description,
+                FontFamily        = root.FontFamily,
+                FontSize          = root.FontSize,
+                CornerRadius      = root.CornerRadius,
+                BackgroundImage   = root.BackgroundImage,
+                BackgroundStretch = root.BackgroundStretch,
+                BackgroundOpacity = root.BackgroundOpacity,
+                AppIcon           = root.AppIcon,
+                Logo              = root.Logo,
+                LogoWidth         = root.LogoWidth,
+                LogoHeight        = root.LogoHeight,
+                TitleBarHeight      = root.TitleBarHeight,
+                ShowTitleBarIcon    = root.ShowTitleBarIcon,
+                ShowTitleBarAppName = root.ShowTitleBarAppName,
+                ShowResizeGrip      = root.ShowResizeGrip,
+                WindowOpacity       = root.WindowOpacity,
+                ShowStatusBar    = root.ShowStatusBar,
+                StatusBarHeight  = root.StatusBarHeight,
+                ShowStatusWifi   = root.ShowStatusWifi,
+                ShowStatusTunnel = root.ShowStatusTunnel,
+                Variables        = root.Variables,
+
+                // Colors: variant wins when non-empty, root is fallback
+                ColorWindowBg        = O(variant.ColorWindowBg,        root.ColorWindowBg),
+                ColorSurface         = O(variant.ColorSurface,         root.ColorSurface),
+                ColorCard            = O(variant.ColorCard,            root.ColorCard),
+                ColorBorder          = O(variant.ColorBorder,          root.ColorBorder),
+                ColorAccent          = O(variant.ColorAccent,          root.ColorAccent),
+                ColorSuccess         = O(variant.ColorSuccess,         root.ColorSuccess),
+                ColorDanger          = O(variant.ColorDanger,          root.ColorDanger),
+                ColorTextPrimary     = O(variant.ColorTextPrimary,     root.ColorTextPrimary),
+                ColorTextMuted       = O(variant.ColorTextMuted,       root.ColorTextMuted),
+                ColorHighlight       = O(variant.ColorHighlight,       root.ColorHighlight),
+                ColorError           = O(variant.ColorError,           root.ColorError),
+                ColorErrorBg         = O(variant.ColorErrorBg,         root.ColorErrorBg),
+                ColorWarning         = O(variant.ColorWarning,         root.ColorWarning),
+                ColorWarningBg       = O(variant.ColorWarningBg,       root.ColorWarningBg),
+                ColorListHover       = O(variant.ColorListHover,       root.ColorListHover),
+                ColorListSelected    = O(variant.ColorListSelected,    root.ColorListSelected),
+                ColorLogTimestamp    = O(variant.ColorLogTimestamp,    root.ColorLogTimestamp),
+                ColorTrayBg          = O(variant.ColorTrayBg,          root.ColorTrayBg),
+                ColorTrayHover       = O(variant.ColorTrayHover,       root.ColorTrayHover),
+                ColorTrayText        = O(variant.ColorTrayText,        root.ColorTrayText),
+                ColorTrayBorder      = O(variant.ColorTrayBorder,      root.ColorTrayBorder),
+                ColorTrayImageMargin = O(variant.ColorTrayImageMargin, root.ColorTrayImageMargin),
+            };
+        }
+
+        // ── Auto-invert: generate the opposite variant by flipping HSL lightness ─
+        /// <summary>
+        /// Returns a copy of <paramref name="src"/> with all colour fields lightness-inverted.
+        /// Used when a theme defines only one variant so the opposite mode still looks reasonable.
+        /// Strategy:
+        ///   • Neutrals (saturation &lt; 15 %): full invert  L → 1−L
+        ///   • Chromatic colours (accents, status): invert L but clamp so the colour
+        ///     stays usable (dark backgrounds keep bright accents, light backgrounds keep
+        ///     saturated but readable tones).
+        /// </summary>
+        private static ThemeDefinition AutoInvertVariant(ThemeDefinition src)
+        {
+            static string Inv(string hex, bool isBackground = false)
+            {
+                if (string.IsNullOrEmpty(hex)) return hex;
+                if (!TryParseColor(hex, out var c)) return hex;
+                RgbToHsl(c.R / 255.0, c.G / 255.0, c.B / 255.0, out double h, out double s, out double l);
+
+                double newL;
+                if (s < 0.15)
+                {
+                    // Neutral: straight invert
+                    newL = 1.0 - l;
+                }
+                else
+                {
+                    // Chromatic: invert but keep contrast against the new background tone
+                    newL = 1.0 - l;
+                    if (isBackground)
+                        newL = Math.Clamp(newL, 0.06, 0.94);
+                    else
+                        // Accent/status: ensure it's visible on both dark and light BG
+                        newL = Math.Clamp(newL, 0.30, 0.75);
+                }
+
+                HslToRgb(h, s, newL, out double r2, out double g2, out double b2);
+                int ri = (int)Math.Round(r2 * 255);
+                int gi = (int)Math.Round(g2 * 255);
+                int bi = (int)Math.Round(b2 * 255);
+
+                // Preserve alpha if original had it
+                return c.A < 255
+                    ? $"#{c.A:X2}{ri:X2}{gi:X2}{bi:X2}"
+                    : $"#{ri:X2}{gi:X2}{bi:X2}";
+            }
+
+            static string InvBg(string hex) => Inv(hex, isBackground: true);
+
+            return new ThemeDefinition
+            {
+                // Structural: unchanged
+                Name              = src.Name,
+                AppName           = src.AppName,
+                Type              = src.Type,
+                Creator           = src.Creator,
+                Description       = src.Description,
+                FontFamily        = src.FontFamily,
+                FontSize          = src.FontSize,
+                CornerRadius      = src.CornerRadius,
+                BackgroundImage   = src.BackgroundImage,
+                BackgroundStretch = src.BackgroundStretch,
+                BackgroundOpacity = src.BackgroundOpacity,
+                AppIcon           = src.AppIcon,
+                Logo              = src.Logo,
+                LogoWidth         = src.LogoWidth,
+                LogoHeight        = src.LogoHeight,
+                TitleBarHeight    = src.TitleBarHeight,
+                ShowTitleBarIcon    = src.ShowTitleBarIcon,
+                ShowTitleBarAppName = src.ShowTitleBarAppName,
+                ShowResizeGrip    = src.ShowResizeGrip,
+                WindowOpacity     = src.WindowOpacity,
+                ShowStatusBar     = src.ShowStatusBar,
+                StatusBarHeight   = src.StatusBarHeight,
+                ShowStatusWifi    = src.ShowStatusWifi,
+                ShowStatusTunnel  = src.ShowStatusTunnel,
+                Variables         = src.Variables,
+
+                // Colours: inverted
+                ColorWindowBg        = InvBg(src.ColorWindowBg),
+                ColorSurface         = InvBg(src.ColorSurface),
+                ColorCard            = InvBg(src.ColorCard),
+                ColorBorder          = Inv(src.ColorBorder),
+                ColorAccent          = Inv(src.ColorAccent),
+                ColorSuccess         = Inv(src.ColorSuccess),
+                ColorDanger          = Inv(src.ColorDanger),
+                ColorTextPrimary     = Inv(src.ColorTextPrimary),
+                ColorTextMuted       = Inv(src.ColorTextMuted),
+                ColorHighlight       = InvBg(src.ColorHighlight),
+                ColorError           = Inv(src.ColorError),
+                ColorErrorBg         = InvBg(src.ColorErrorBg),
+                ColorWarning         = Inv(src.ColorWarning),
+                ColorWarningBg       = InvBg(src.ColorWarningBg),
+                ColorListHover       = InvBg(src.ColorListHover),
+                ColorListSelected    = InvBg(src.ColorListSelected),
+                ColorLogTimestamp    = Inv(src.ColorLogTimestamp),
+                ColorTrayBg          = InvBg(src.ColorTrayBg),
+                ColorTrayHover       = InvBg(src.ColorTrayHover),
+                ColorTrayText        = Inv(src.ColorTrayText),
+                ColorTrayBorder      = Inv(src.ColorTrayBorder),
+                ColorTrayImageMargin = InvBg(src.ColorTrayImageMargin),
+            };
+        }
+
+        // ── HSL ↔ RGB helpers ─────────────────────────────────────────────────
+
+        private static bool TryParseColor(string hex, out (int A, int R, int G, int B) result)
+        {
+            result = (255, 0, 0, 0);
+            hex = hex.TrimStart('#').Trim();
+            try
+            {
+                switch (hex.Length)
+                {
+                    case 3:  // #RGB
+                        result = (255,
+                            Convert.ToInt32(new string(hex[0], 2), 16),
+                            Convert.ToInt32(new string(hex[1], 2), 16),
+                            Convert.ToInt32(new string(hex[2], 2), 16));
+                        return true;
+                    case 4:  // #ARGB
+                        result = (Convert.ToInt32(new string(hex[0], 2), 16),
+                            Convert.ToInt32(new string(hex[1], 2), 16),
+                            Convert.ToInt32(new string(hex[2], 2), 16),
+                            Convert.ToInt32(new string(hex[3], 2), 16));
+                        return true;
+                    case 6:  // #RRGGBB
+                        result = (255,
+                            Convert.ToInt32(hex[..2], 16),
+                            Convert.ToInt32(hex[2..4], 16),
+                            Convert.ToInt32(hex[4..6], 16));
+                        return true;
+                    case 8:  // #AARRGGBB
+                        result = (Convert.ToInt32(hex[..2], 16),
+                            Convert.ToInt32(hex[2..4], 16),
+                            Convert.ToInt32(hex[4..6], 16),
+                            Convert.ToInt32(hex[6..8], 16));
+                        return true;
+                    default: return false;
+                }
+            }
+            catch { return false; }
+        }
+
+        private static void RgbToHsl(double r, double g, double b,
+            out double h, out double s, out double l)
+        {
+            double max = Math.Max(r, Math.Max(g, b));
+            double min = Math.Min(r, Math.Min(g, b));
+            double delta = max - min;
+            l = (max + min) / 2.0;
+            if (delta < 1e-10) { h = 0; s = 0; return; }
+            s = l > 0.5 ? delta / (2.0 - max - min) : delta / (max + min);
+            if      (max == r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6.0;
+            else if (max == g) h = ((b - r) / delta + 2.0) / 6.0;
+            else               h = ((r - g) / delta + 4.0) / 6.0;
+        }
+
+        private static void HslToRgb(double h, double s, double l,
+            out double r, out double g, out double b)
+        {
+            if (s < 1e-10) { r = g = b = l; return; }
+            double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            double p = 2 * l - q;
+            r = HueToRgb(p, q, h + 1.0 / 3);
+            g = HueToRgb(p, q, h);
+            b = HueToRgb(p, q, h - 1.0 / 3);
+        }
+
+        private static double HueToRgb(double p, double q, double t)
+        {
+            if (t < 0) t += 1; if (t > 1) t -= 1;
+            if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+            if (t < 1.0 / 2) return q;
+            if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+            return p;
+        }
+
         // ── Apply all theme values to Application.Resources ───────────────────
-        private static void Apply(ThemeDefinition d, string folder)
+        private static void Apply(ThemeDefinition d, string folder, bool isDark)
         {
             var res = Application.Current.Resources;
 
@@ -151,7 +481,6 @@ namespace MasselGUARD
             // back to the live Windows system colour for that semantic slot.  This means
             // every theme automatically inherits the current dark/light palette and only
             // needs to declare the colours it deliberately wants to change.
-            bool isDark = !d.Type.Equals("light", StringComparison.OrdinalIgnoreCase);
             var sys = BuildSystemTheme(isDark);
             // R(): theme value when non-empty, system base when blank.
             string R(string val, string fb) => string.IsNullOrWhiteSpace(val) ? fb : val;
@@ -550,12 +879,23 @@ namespace MasselGUARD
             var def = BuildSystemTheme(isDark);
             CurrentThemeName = "__system__";
             Current          = def;
-            Apply(def, string.Empty);
+            Apply(def, string.Empty, isDark);
             ThemeChanged?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>Convenience overload — detects dark/light from registry automatically.</summary>
         public void LoadSystem() => LoadSystem(GetSystemIsDark());
+
+        /// <summary>
+        /// Applies a ThemeDefinition directly as a live preview without changing
+        /// CurrentThemeName or firing ThemeChanged.  Call Load() with the previous
+        /// name to revert.
+        /// </summary>
+        public void ApplyPreview(ThemeDefinition def, string folder)
+        {
+            bool isDark = !def.Type.Equals("light", StringComparison.OrdinalIgnoreCase);
+            Apply(def, folder, isDark);
+        }
 
         /// <summary>
         /// Returns the full ThemeDefinition for a folder without applying it,
@@ -775,6 +1115,88 @@ namespace MasselGUARD
         /// <summary>Tray menu left image-margin column colour. Defaults to colorWindowBg.</summary>
         public string ColorTrayImageMargin { get; set; } = "";
 
-        public static ThemeDefinition Default => new ThemeDefinition();
+        // ── Dual-variant support ──────────────────────────────────────────────
+        /// <summary>
+        /// Optional dark-mode color overrides.  When present, the app loads these
+        /// colors (merged on top of the root values) when dark mode is active.
+        /// All structural settings (font, corner radius, window chrome, etc.) are
+        /// always taken from the root — only color fields are merged from variants.
+        /// </summary>
+        public ThemeDefinition? Dark  { get; set; } = null;
+
+        /// <summary>
+        /// Optional light-mode color overrides.  Merged on top of root colors when
+        /// light mode is active.
+        /// </summary>
+        public ThemeDefinition? Light { get; set; } = null;
+
+        /// <summary>True when the JSON contains at least one variant section.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool IsDualVariant => Dark != null || Light != null;
+
+        public static ThemeDefinition Default => WindowsDefault;
+
+        /// <summary>
+        /// Hardcoded Windows Default theme — Fluent Design tokens, Segoe UI Variable.
+        /// Used when no theme file is found and as the built-in "windows-default" virtual theme.
+        /// </summary>
+        public static ThemeDefinition WindowsDefault => new ThemeDefinition
+        {
+            Name         = "Windows Default",
+            AppName      = "MasselGUARD",
+            FontFamily   = "Segoe UI Variable",
+            FontSize     = 12,
+            CornerRadius = 8,
+            Dark = new ThemeDefinition
+            {
+                ColorWindowBg     = "#202020",
+                ColorSurface      = "#2B2B2B",
+                ColorCard         = "#313131",
+                ColorBorder       = "#3D3D3D",
+                ColorAccent       = "#0078D4",
+                ColorSuccess      = "#6CCB5F",
+                ColorDanger       = "#FF4343",
+                ColorTextPrimary  = "#FFFFFF",
+                ColorTextMuted    = "#9D9D9D",
+                ColorHighlight    = "#004578",
+                ColorError        = "#FF4343",
+                ColorErrorBg      = "#3D1A1A",
+                ColorWarning      = "#FCE100",
+                ColorWarningBg    = "#3D3400",
+                ColorListHover    = "#3D3D3D",
+                ColorListSelected = "#004578",
+                ColorLogTimestamp = "#9D9D9D",
+                ColorTrayBg          = "#2B2B2B",
+                ColorTrayHover       = "#3D3D3D",
+                ColorTrayText        = "#FFFFFF",
+                ColorTrayBorder      = "#3D3D3D",
+                ColorTrayImageMargin = "#2B2B2B",
+            },
+            Light = new ThemeDefinition
+            {
+                ColorWindowBg     = "#F3F3F3",
+                ColorSurface      = "#FFFFFF",
+                ColorCard         = "#EBEBEB",
+                ColorBorder       = "#D4D4D4",
+                ColorAccent       = "#0067C0",
+                ColorSuccess      = "#107C10",
+                ColorDanger       = "#C42B1C",
+                ColorTextPrimary  = "#1C1C1C",
+                ColorTextMuted    = "#5D5D5D",
+                ColorHighlight    = "#CCE4F7",
+                ColorError        = "#C42B1C",
+                ColorErrorBg      = "#FDE7E9",
+                ColorWarning      = "#7A5D1A",
+                ColorWarningBg    = "#FFF4CE",
+                ColorListHover    = "#E5E5E5",
+                ColorListSelected = "#CCE4F7",
+                ColorLogTimestamp = "#5D5D5D",
+                ColorTrayBg          = "#F3F3F3",
+                ColorTrayHover       = "#E5E5E5",
+                ColorTrayText        = "#1C1C1C",
+                ColorTrayBorder      = "#D4D4D4",
+                ColorTrayImageMargin = "#F3F3F3",
+            },
+        };
     }
 }
