@@ -47,16 +47,10 @@ namespace MasselGUARD
             var cfg = MasselGUARD.MainWindow.GetConfigStatic();
             if (cfg == null) return;
 
-            // AutoTheme: switch to the user-configured dark or light theme.
-            if (cfg.AutoTheme)
-            {
-                var target = isDark ? cfg.ActiveDarkTheme : cfg.ActiveLightTheme;
-                if (!string.IsNullOrEmpty(target) && target != ThemeManager.Instance.CurrentThemeName)
-                {
-                    ThemeManager.Instance.Load(target);
-                    cfg.ActiveTheme = target;
-                }
-            }
+            // Reload the active theme for the new dark/light state
+            var target = cfg.ActiveTheme;
+            if (!string.IsNullOrEmpty(target) && target != "__system__")
+                ThemeManager.Instance.Load(target, isDark);
         }
 
         /// <summary>Polling fallback — detects dark/light changes if the event fires late or is missed.</summary>
@@ -119,9 +113,9 @@ namespace MasselGUARD
                         bootCfg.Config.FontOverrideSize    = 0.0;
                         shiftFontReset = true;
                     }
-                    if (bootCfg.Config.UseCustomTheme || bootCfg.Config.SystemThemeMode != "auto")
+                    if (bootCfg.Config.ActiveTheme != "__system__" || bootCfg.Config.SystemThemeMode != "auto")
                     {
-                        bootCfg.Config.UseCustomTheme  = false;
+                        bootCfg.Config.ActiveTheme     = "__system__";
                         bootCfg.Config.SystemThemeMode = "auto";
                         shiftThemeReset = true;
                     }
@@ -138,9 +132,17 @@ namespace MasselGUARD
                     Lang.Instance.Load(langCode);
 
                 if (shiftThemeReset)
+                {
                     ThemeManager.Instance.LoadSystem(ThemeManager.GetSystemIsDark());
+                }
                 else
-                    ThemeManager.Instance.Load(bootCfg.Config.ActiveTheme ?? "default-dark");
+                {
+                    var bootTheme = bootCfg.Config.ActiveTheme;
+                    if (string.IsNullOrEmpty(bootTheme) || bootTheme == "__system__")
+                        ThemeManager.Instance.LoadSystem(ThemeManager.GetSystemIsDark());
+                    else
+                        ThemeManager.Instance.Load(bootTheme, ThemeManager.GetSystemIsDark());
+                }
 
                 // Show the reset confirmation now that theme resources are loaded
                 if (shiftFontReset || shiftThemeReset)

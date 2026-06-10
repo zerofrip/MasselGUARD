@@ -69,12 +69,12 @@ namespace MasselGUARD
         }
 
         /// <summary>Returns all available language codes found in the lang folder.</summary>
-        public static List<(string code, string name)> AvailableLanguages()
+        public static List<(string code, string name, string flag)> AvailableLanguages()
         {
             var dir = LangDir();
-            if (!Directory.Exists(dir)) return new List<(string, string)> { ("en", "English") };
+            if (!Directory.Exists(dir)) return new List<(string, string, string)> { ("en", "English", "us") };
 
-            var result = new List<(string code, string name)>();
+            var result = new List<(string code, string name, string flag)>();
             foreach (var file in Directory.GetFiles(dir, "*.json").OrderBy(f => f))
             {
                 try
@@ -84,11 +84,12 @@ namespace MasselGUARD
                     if (dict == null) continue;
                     var code = dict.TryGetValue("_code",     out var c) ? c : Path.GetFileNameWithoutExtension(file);
                     var name = dict.TryGetValue("_language", out var n) ? n : code;
-                    result.Add((code, name));
+                    var flag = dict.TryGetValue("_flag",     out var f) ? f : code;
+                    result.Add((code, name, flag));
                 }
                 catch { }
             }
-            return result.Count > 0 ? result : new List<(string, string)> { ("en", "English") };
+            return result.Count > 0 ? result : new List<(string, string, string)> { ("en", "English", "us") };
         }
 
         // ── Indexer — used by WPF bindings ───────────────────────────────────

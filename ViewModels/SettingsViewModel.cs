@@ -116,44 +116,15 @@ namespace MasselGUARD.ViewModels
         }
 
         // Appearance
-        private string _activeDarkTheme  = "default-dark";
-        public string ActiveDarkTheme
+        private string _activeTheme = "__system__";
+        public string ActiveTheme
         {
-            get => _activeDarkTheme;
+            get => _activeTheme;
             set
             {
-                if (!SetField(ref _activeDarkTheme, value)) return;
-                // Apply immediately for live preview if not in auto mode
-                if (!_autoTheme)
-                    ThemeManager.Instance.Load(value);
-            }
-        }
-
-        private string _activeLightTheme = "default-light";
-        public string ActiveLightTheme
-        {
-            get => _activeLightTheme;
-            set
-            {
-                if (!SetField(ref _activeLightTheme, value)) return;
-                if (!_autoTheme)
-                    ThemeManager.Instance.Load(value);
-            }
-        }
-
-        private bool _autoTheme;
-        public bool AutoTheme
-        {
-            get => _autoTheme;
-            set
-            {
-                if (!SetField(ref _autoTheme, value)) return;
-                if (value)
-                {
-                    // Follow system immediately
-                    bool isDark = ThemeManager.GetSystemIsDark();
-                    ThemeManager.Instance.Load(isDark ? _activeDarkTheme : _activeLightTheme);
-                }
+                if (!SetField(ref _activeTheme, value)) return;
+                bool isDark = ThemeManager.GetSystemIsDark();
+                ThemeManager.Instance.Load(value, isDark);
             }
         }
 
@@ -236,9 +207,7 @@ namespace MasselGUARD.ViewModels
             _openWifiTunnel   = cfg.OpenWifiTunnel;
             _disableWifiRules = cfg.ManualMode;
             _automationEnabled= !cfg.ManualMode;
-            _activeDarkTheme  = cfg.ActiveDarkTheme;
-            _activeLightTheme = cfg.ActiveLightTheme;
-            _autoTheme        = cfg.AutoTheme;
+            _activeTheme      = cfg.ActiveTheme;
             _showTrayPopup    = cfg.ShowTrayPopupOnSwitch;
             _logLevel         = cfg.LogLevelSetting;
 
@@ -312,9 +281,7 @@ namespace MasselGUARD.ViewModels
             _config.Config.DefaultTunnel         = _defaultTunnel;
             _config.Config.OpenWifiTunnel        = _openWifiTunnel;
             _config.Config.ManualMode            = _disableWifiRules;
-            _config.Config.ActiveDarkTheme       = _activeDarkTheme;
-            _config.Config.ActiveLightTheme      = _activeLightTheme;
-            _config.Config.AutoTheme             = _autoTheme;
+            _config.Config.ActiveTheme           = _activeTheme;
             _config.Config.ShowTrayPopupOnSwitch = _showTrayPopup;
             _config.Config.LogLevelSetting       = _logLevel;
             _config.Config.Rules                 = Rules.ToList();
@@ -322,16 +289,9 @@ namespace MasselGUARD.ViewModels
             _config.Save();
 
             // Ensure the saved theme is applied (in case preview changed it mid-session)
-            if (_autoTheme)
             {
                 bool isDark = ThemeManager.GetSystemIsDark();
-                ThemeManager.Instance.Load(isDark ? _activeDarkTheme : _activeLightTheme);
-            }
-            else
-            {
-                // Apply whichever of dark/light matches current system preference
-                bool sysDark = ThemeManager.GetSystemIsDark();
-                ThemeManager.Instance.Load(sysDark ? _activeDarkTheme : _activeLightTheme);
+                ThemeManager.Instance.Load(_activeTheme, isDark);
             }
 
             _log.Ok("Settings saved");

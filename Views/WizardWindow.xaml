@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:MasselGUARD"
         Title="{Binding [WizardTitle], Source={x:Static local:Lang.Instance}}"
-        Width="500" Height="460"
+        Width="500" Height="480"
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner">
@@ -29,7 +29,7 @@
                            VerticalAlignment="Center" Margin="16,0"/>
             </Border>
 
-            <!-- Step dots: 5 steps (0-4) -->
+            <!-- Step dots: 7 steps (0-6) -->
             <StackPanel Grid.Row="1" Orientation="Horizontal"
                         HorizontalAlignment="Center" Margin="0,14,0,0">
                 <Ellipse x:Name="Dot0" Width="10" Height="10" Margin="4,0" Fill="{DynamicResource Accent}"/>
@@ -37,6 +37,8 @@
                 <Ellipse x:Name="Dot2" Width="10" Height="10" Margin="4,0" Fill="{DynamicResource BorderColor}"/>
                 <Ellipse x:Name="Dot3" Width="10" Height="10" Margin="4,0" Fill="{DynamicResource BorderColor}"/>
                 <Ellipse x:Name="Dot4" Width="10" Height="10" Margin="4,0" Fill="{DynamicResource BorderColor}"/>
+                <Ellipse x:Name="Dot5" Width="10" Height="10" Margin="4,0" Fill="{DynamicResource BorderColor}"/>
+                <Ellipse x:Name="Dot6" Width="10" Height="10" Margin="4,0" Fill="{DynamicResource BorderColor}"/>
             </StackPanel>
 
             <!-- Step pages -->
@@ -69,26 +71,6 @@
                                Foreground="{DynamicResource TextPrimary}"
                                TextWrapping="Wrap" LineHeight="18" Margin="0,0,0,16"/>
 
-                    <!-- Install choice (first-run standalone only) -->
-                    <Border x:Name="WizInstallChoice" Visibility="Collapsed"
-                            Background="{DynamicResource Surface}"
-                            BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
-                            CornerRadius="{DynamicResource Theme.CornerRadius}" Padding="12,10" Margin="0,0,0,10">
-                        <StackPanel>
-                            <TextBlock Text="{Binding [WizardInstallQuestion], Source={x:Static local:Lang.Instance}}"
-                                       FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
-                                       Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="{Binding [WizardInstallPortable], Source={x:Static local:Lang.Instance}}"
-                                        Style="{StaticResource FlatBtn}" FontSize="11" Padding="12,6"
-                                        Margin="0,0,8,0" Click="WizRunPortable_Click"/>
-                                <Button Content="{Binding [WizardInstallManaged], Source={x:Static local:Lang.Instance}}"
-                                        Style="{StaticResource SuccessBtn}" FontSize="11" Padding="12,6"
-                                        Click="WizInstallNow_Click"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
                     <!-- Import settings card -->
                     <Border Background="{DynamicResource Surface}"
                             BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
@@ -102,7 +84,6 @@
                                 <TextBlock Text="{Binding [WizardImportHint], Source={x:Static local:Lang.Instance}}"
                                            FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
                                            Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"/>
-                                <!-- Import result label -->
                                 <TextBlock x:Name="WizImportResultLabel"
                                            FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
                                            Foreground="{DynamicResource Success}" TextWrapping="Wrap"
@@ -131,7 +112,24 @@
                                FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
                                Foreground="{DynamicResource TextMuted}" Margin="0,0,0,4"/>
                     <ComboBox x:Name="WizLangPicker" FontSize="11"
-                              SelectionChanged="WizLang_Changed" Margin="0,0,0,20"/>
+                              SelectionChanged="WizLang_Changed" Margin="0,0,0,20">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{Binding FlagImage}"
+                                           Width="20" Height="14"
+                                           Margin="0,0,8,0" VerticalAlignment="Center"
+                                           RenderOptions.BitmapScalingMode="HighQuality"
+                                           SnapsToDevicePixels="True"/>
+                                    <TextBlock Text="{Binding Name}"
+                                               FontFamily="{DynamicResource Theme.FontFamily}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextPrimary}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
 
                     <!-- Theme -->
                     <TextBlock Text="{Binding [WizardThemeLabel], Source={x:Static local:Lang.Instance}}"
@@ -168,7 +166,6 @@
                                FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
                                Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,16"/>
 
-                    <!-- Mode radio cards -->
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
                             BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,6">
                         <Grid>
@@ -219,14 +216,146 @@
                     </Border>
                 </StackPanel>
 
-                <!-- ── Step 3: Automation ──────────────────────────────────── -->
+                <!-- ── Step 3: Startup & Installation ─────────────────────── -->
                 <StackPanel x:Name="Step3" Visibility="Collapsed">
-                    <TextBlock Text="{Binding [WizardManualTitle], Source={x:Static local:Lang.Instance}}"
+                    <TextBlock Text="Startup"
+                               FontFamily="{DynamicResource Theme.FontFamily}" FontSize="16" FontWeight="Bold"
+                               Foreground="{DynamicResource Accent}" Margin="0,0,0,10"/>
+                    <TextBlock Text="Choose how MasselGUARD is installed and whether it starts automatically with Windows."
+                               FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                               Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+
+                    <!-- Install choice (first-run standalone only) -->
+                    <Border x:Name="WizInstallChoice" Visibility="Collapsed"
+                            Background="{DynamicResource Surface}"
+                            BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
+                            CornerRadius="{DynamicResource Theme.CornerRadius}" Padding="12,10" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="{Binding [WizardInstallQuestion], Source={x:Static local:Lang.Instance}}"
+                                       FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                       Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="{Binding [WizardInstallPortable], Source={x:Static local:Lang.Instance}}"
+                                        Style="{StaticResource FlatBtn}" FontSize="11" Padding="12,6"
+                                        Margin="0,0,8,0" Click="WizRunPortable_Click"/>
+                                <Button Content="{Binding [WizardInstallManaged], Source={x:Static local:Lang.Instance}}"
+                                        Style="{StaticResource SuccessBtn}" FontSize="11" Padding="12,6"
+                                        Click="WizInstallNow_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Start with Windows -->
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
+                            BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,6">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding [SettingsStartWithWindows], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="{Binding [SettingsStartWithWindowsDesc], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                           Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="WizStartWithWindowsToggle"
+                                          Width="44" Height="22" Style="{StaticResource ToggleSwitch}"
+                                          Margin="12,0,0,0" VerticalAlignment="Center"
+                                          Checked="WizStartWithWindows_Changed"
+                                          Unchecked="WizStartWithWindows_Changed"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Confirm on exit -->
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
+                            BorderThickness="1" CornerRadius="4" Padding="12,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Confirm disconnect on exit"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="Ask before disconnecting active tunnels when closing the app."
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                           Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="WizConfirmOnCloseToggle"
+                                          Width="44" Height="22" Style="{StaticResource ToggleSwitch}"
+                                          Margin="12,0,0,0" VerticalAlignment="Center"
+                                          Checked="WizConfirmOnClose_Changed"
+                                          Unchecked="WizConfirmOnClose_Changed"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- ── Step 4: WiFi Automation ─────────────────────────────── -->
+                <StackPanel x:Name="Step4" Visibility="Collapsed">
+                    <TextBlock Text="{Binding [SettingsTabWifi], Source={x:Static local:Lang.Instance}}"
                                FontFamily="{DynamicResource Theme.FontFamily}" FontSize="16" FontWeight="Bold"
                                Foreground="{DynamicResource Accent}" Margin="0,0,0,10"/>
                     <TextBlock Text="{Binding [WizardManualBody], Source={x:Static local:Lang.Instance}}"
                                FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
-                               Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+                               Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+                    <!-- How rules work — explanation only; rules are created after the
+                         wizard (Settings → WiFi), once tunnels exist. -->
+                    <Border Background="{DynamicResource Surface}"
+                            BorderBrush="{DynamicResource Accent}" BorderThickness="2,0,0,0"
+                            Padding="12,10" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="{Binding [WizardRulesTitle], Source={x:Static local:Lang.Instance}}"
+                                       FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                       FontWeight="Bold" Foreground="{DynamicResource Accent}"/>
+                            <TextBlock Text="{Binding [WizardRulesBody], Source={x:Static local:Lang.Instance}}"
+                                       FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                       Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"
+                                       Margin="0,4,0,0"/>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           Text="{Binding [WizardRuleLabelWifi], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
+                                           Margin="0,0,8,3"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1"
+                                           Text="{Binding [WizardRulesWifiHint], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                           Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"
+                                           Margin="0,0,0,3"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0"
+                                           Text="{Binding [WizardRuleLabelDefault], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
+                                           Margin="0,0,8,3"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1"
+                                           Text="{Binding [WizardRulesDefaultHint], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                           Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"
+                                           Margin="0,0,0,3"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0"
+                                           Text="{Binding [WizardRuleLabelOpen], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
+                                           Margin="0,0,8,0"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1"
+                                           Text="{Binding [WizardRulesOpenHint], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                                           Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"/>
+                            </Grid>
+                            <TextBlock Text="{Binding [WizardRulesWhy], Source={x:Static local:Lang.Instance}}"
+                                       FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                       FontStyle="Italic" Foreground="{DynamicResource TextMuted}"
+                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                        </StackPanel>
+                    </Border>
 
                     <!-- Disable WiFi rules toggle -->
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
@@ -246,10 +375,10 @@
                         </Grid>
                     </Border>
 
-                    <!-- Show WiFi rules on main window card (hidden when manual mode on) -->
+                    <!-- Show WiFi rules on main window (hidden when manual mode on) -->
                     <Border x:Name="WizShowRulesCard"
                             Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
-                            BorderThickness="1" CornerRadius="4" Padding="12,10">
+                            BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,10">
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
@@ -269,8 +398,133 @@
                     </Border>
                 </StackPanel>
 
-                <!-- ── Step 4: Done ────────────────────────────────────────── -->
-                <StackPanel x:Name="Step4" Visibility="Collapsed">
+                <!-- ── Step 5: Behavior ────────────────────────────────────── -->
+                <StackPanel x:Name="Step5" Visibility="Collapsed">
+                    <TextBlock Text="Behavior"
+                               FontFamily="{DynamicResource Theme.FontFamily}" FontSize="16" FontWeight="Bold"
+                               Foreground="{DynamicResource Accent}" Margin="0,0,0,10"/>
+                    <TextBlock Text="Configure how MasselGUARD handles automatic reconnects, history recording, and notifications."
+                               FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                               Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+
+                    <!-- Auto-reconnect -->
+                    <TextBlock Text="Auto-reconnect"
+                               FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
+                            BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,4">
+                        <StackPanel>
+                            <TextBlock Text="When a tunnel drops unexpectedly, attempt to reconnect automatically."
+                                       FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                       Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="WizArOff" GroupName="WizAr" Tag="off"
+                                             Content="Off"
+                                             Style="{StaticResource PillRadio}"
+                                             Checked="WizArMode_Changed"/>
+                                <RadioButton x:Name="WizArPerTunnel" GroupName="WizAr" Tag="per-tunnel"
+                                             Content="Per tunnel"
+                                             Style="{StaticResource PillRadio}" Margin="6,0,0,0"
+                                             Checked="WizArMode_Changed"/>
+                                <RadioButton x:Name="WizArAlways" GroupName="WizAr" Tag="always"
+                                             Content="Always"
+                                             Style="{StaticResource PillRadio}" Margin="6,0,0,0"
+                                             Checked="WizArMode_Changed"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- DNS leak indicator (tunnel display option) -->
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
+                            BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,4">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding [ShowDnsIndicatorLabel], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="{Binding [ShowDnsIndicatorDesc], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                           Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="WizDnsIndicatorToggle"
+                                          Width="44" Height="22" Style="{StaticResource ToggleSwitch}"
+                                          Margin="12,0,0,0" VerticalAlignment="Center"
+                                          Checked="WizDnsIndicator_Changed"
+                                          Unchecked="WizDnsIndicator_Changed"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- History -->
+                    <TextBlock Text="History"
+                               FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,8,0,4"/>
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
+                            BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,4">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Record tunnel connections"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="Save tunnel uptime and traffic to history."
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                           Foreground="{DynamicResource TextMuted}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="WizStoreConnectionHistoryToggle"
+                                          Width="44" Height="22" Style="{StaticResource ToggleSwitch}"
+                                          Margin="12,0,0,0" VerticalAlignment="Center"
+                                          Checked="WizStoreConnectionHistory_Changed"
+                                          Unchecked="WizStoreConnectionHistory_Changed"/>
+                        </Grid>
+                    </Border>
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
+                            BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Record WiFi networks (SSID)"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="Save WiFi network connection timestamps to history."
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                           Foreground="{DynamicResource TextMuted}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="WizStoreWifiHistoryToggle"
+                                          Width="44" Height="22" Style="{StaticResource ToggleSwitch}"
+                                          Margin="12,0,0,0" VerticalAlignment="Center"
+                                          Checked="WizStoreWifiHistory_Changed"
+                                          Unchecked="WizStoreWifiHistory_Changed"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Notifications -->
+                    <TextBlock Text="Notifications"
+                               FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
+                            BorderThickness="1" CornerRadius="4" Padding="12,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding [SettingsTrayPopupLabel], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="11"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="{Binding [SettingsTrayPopup], Source={x:Static local:Lang.Instance}}"
+                                           FontFamily="{DynamicResource Theme.FontFamily}" FontSize="9"
+                                           Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="WizTrayPopupToggle"
+                                          Width="44" Height="22" Style="{StaticResource ToggleSwitch}"
+                                          Margin="12,0,0,0" VerticalAlignment="Center"
+                                          Checked="WizTrayPopup_Changed"
+                                          Unchecked="WizTrayPopup_Changed"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- ── Step 6: Done ────────────────────────────────────────── -->
+                <StackPanel x:Name="Step6" Visibility="Collapsed">
                     <TextBlock Text="{Binding [WizardDoneTitle], Source={x:Static local:Lang.Instance}}"
                                FontFamily="{DynamicResource Theme.FontFamily}" FontSize="16" FontWeight="Bold"
                                Foreground="{DynamicResource Accent}" Margin="0,0,0,10"/>
@@ -292,9 +546,14 @@
                         </Grid>
                     </Border>
 
+                    <!-- Summary card -->
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource BorderColor}"
+                            BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,10">
+                        <StackPanel x:Name="WizSummaryPanel"/>
+                    </Border>
+
                     <!-- Tip card -->
-                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Accent}"
-                            BorderThickness="0,0,0,0"
+                    <Border Background="{DynamicResource Surface}"
                             CornerRadius="4" Padding="12,8">
                         <TextBlock Text="{Binding [WizardDoneTip], Source={x:Static local:Lang.Instance}}"
                                    FontFamily="{DynamicResource Theme.FontFamily}" FontSize="10"

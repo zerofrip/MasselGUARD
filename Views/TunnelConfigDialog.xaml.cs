@@ -21,6 +21,8 @@ namespace MasselGUARD.Views
         public bool    ResultIsDefault         { get; private set; }
         public bool    ResultIsOpenProtection  { get; private set; }
         public bool    ResultKillSwitch        { get; private set; }
+        public bool    ResultAutoReconnect     { get; private set; }
+        public bool    ResultSkipValidation    { get; private set; }
 
         private readonly string? _originalName;
 
@@ -30,7 +32,9 @@ namespace MasselGUARD.Views
                                   string? preDisconnect = null, string? postDisconnect = null,
                                   bool isDefault = false, bool isOpenProtection = false,
                                   List<string>? groupNames = null,
-                                  bool isKillSwitch = false, bool isGlobalAlways = false)
+                                  bool isKillSwitch = false, bool isGlobalAlways = false,
+                                  bool isAutoReconnect = false, string autoReconnectMode = "off",
+                                  bool isSkipValidation = false)
         {
             InitializeComponent();
             _originalName = existingName;
@@ -81,6 +85,34 @@ namespace MasselGUARD.Views
                     KillSwitchToggle.Opacity   = 0.5;
                     if (KillSwitchToggleLabel != null)
                         KillSwitchToggleLabel.Text = "🔒 Kill switch  (controlled globally)";
+                }
+            }
+
+            // Skip validation toggle
+            if (SkipValidationToggle != null)
+                SkipValidationToggle.IsChecked = isSkipValidation;
+
+            // Auto-reconnect toggle
+            if (AutoReconnectRow != null)
+            {
+                if (autoReconnectMode == "off")
+                {
+                    AutoReconnectRow.Visibility = System.Windows.Visibility.Collapsed;
+                }
+                else
+                {
+                    AutoReconnectRow.Visibility = System.Windows.Visibility.Visible;
+                    if (AutoReconnectToggle != null)
+                    {
+                        AutoReconnectToggle.IsChecked = isAutoReconnect;
+                        if (autoReconnectMode == "always")
+                        {
+                            AutoReconnectToggle.IsEnabled = false;
+                            AutoReconnectToggle.Opacity   = 0.5;
+                            if (AutoReconnectToggleLabel != null)
+                                AutoReconnectToggleLabel.Text = "🔄 Auto-reconnect  (controlled globally)";
+                        }
+                    }
                 }
             }
         }
@@ -215,6 +247,8 @@ namespace MasselGUARD.Views
             ResultIsDefault        = IsDefaultToggle?.IsChecked        == true;
             ResultIsOpenProtection = IsOpenProtectionToggle?.IsChecked == true;
             ResultKillSwitch       = KillSwitchToggle?.IsChecked       == true;
+            ResultAutoReconnect    = AutoReconnectToggle?.IsChecked    == true;
+            ResultSkipValidation   = SkipValidationToggle?.IsChecked   == true;
             DialogResult = true;
         }
 

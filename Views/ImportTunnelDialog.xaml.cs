@@ -286,7 +286,7 @@ namespace MasselGUARD.Views
             var root = new System.Windows.Controls.Border
             {
                 Background      = Br("WindowBg"),
-                BorderBrush     = Br("BorderColor"),
+                BorderBrush     = Br("Accent"),
                 BorderThickness = new Thickness(1),
                 CornerRadius    = new CornerRadius(6)
             };

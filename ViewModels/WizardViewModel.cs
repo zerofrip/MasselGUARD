@@ -18,7 +18,7 @@ namespace MasselGUARD.ViewModels
         private readonly ConfigService _config;
         private readonly LogService    _log;
 
-        public const int TotalSteps = 5;
+        public const int TotalSteps = 7;
 
         private int _step;
         public int Step
@@ -140,9 +140,9 @@ namespace MasselGUARD.ViewModels
 
         private void ApplyAndFinish()
         {
-            var cfg          = _config.Config;
-            cfg.Mode         = _mode;
-            cfg.ManualMode   = _disableWifiRules;
+            var cfg        = _config.Config;
+            cfg.Mode       = _mode;
+            cfg.ManualMode = _disableWifiRules;
             _config.Save();
             _log.Ok("Wizard completed");
             Finished?.Invoke();
@@ -153,9 +153,9 @@ namespace MasselGUARD.ViewModels
         private void PopulateLanguages()
         {
             AvailableLanguages.Clear();
-            foreach (var (code, name) in Lang.AvailableLanguages())
+            foreach (var (code, name, flag) in Lang.AvailableLanguages())
             {
-                var item = new MasselGUARD.LangItem(code, name);
+                var item = new MasselGUARD.LangItem(code, name, flag);
                 AvailableLanguages.Add(item);
                 if (string.Equals(code, _config.Config.Language,
                         StringComparison.OrdinalIgnoreCase))

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -163,7 +164,7 @@ namespace MasselGUARD
             {
                 string? change = Marshal.PtrToStringAuto(lParam);
                 // "ImmersiveColorSet" fires on accent-colour change and dark/light mode switch
-                if (change is "ImmersiveColorSet" && !ConfigSvc.Config.UseCustomTheme)
+                if (change is "ImmersiveColorSet" && ConfigSvc.Config.ActiveTheme is "__system__" or "" or null)
                 {
                     Dispatcher.BeginInvoke(() =>
                     {
@@ -190,9 +191,9 @@ namespace MasselGUARD
 
             LogSvc.Ok(Lang.T("LogAppStarted"));
             LogSvc.Info($"Started from: {Environment.ProcessPath ?? AppContext.BaseDirectory}");
-            LogSvc.Debug($"  [DBG] OS    : {Environment.OSVersion}");
-            LogSvc.Debug($"  [DBG] .NET  : {Environment.Version}");
-            LogSvc.Debug($"  [DBG] User  : {Environment.UserDomainName}\\{Environment.UserName}");
+            LogSvc.Debug($"OS    : {Environment.OSVersion}");
+            LogSvc.Debug($".NET  : {Environment.Version}");
+            LogSvc.Debug($"User  : {Environment.UserDomainName}\\{Environment.UserName}");
 
             // Subscribe to log service and render existing entries
             LogSvc.EntryAdded += AppendLogEntry;
@@ -246,6 +247,15 @@ namespace MasselGUARD
 
             // Theme: apply on startup based on UseCustomTheme + SystemThemeMode
             ApplyThemeFromConfig();
+
+            // Close any history entries that are still open but whose tunnel is no longer
+            // running — catches crashes, force-kills, and tunnels deleted while the app was off.
+            HistorySvc.CloseStaleHistoryEntries(name =>
+            {
+                var stored = ConfigSvc.Config.Tunnels
+                    .FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                return stored != null && TunnelSvc.IsActive(stored);
+            });
 
             // Build initial tunnel list
             _vm.RebuildTunnelList();
@@ -395,7 +405,7 @@ namespace MasselGUARD
                 else
                     LogDocument.Blocks.Add(para);
                 LogBox.ScrollToHome();
-                LogCountLabel.Text = LogSvc.Entries.Count.ToString();
+                LogCountLabel.Text = LogSvc.Count.ToString();
             }
 
             if (Dispatcher.CheckAccess())
@@ -415,7 +425,7 @@ namespace MasselGUARD
             LogDocument.Blocks.Clear();
             foreach (var e in LogSvc.Entries)
                 AppendLogEntry(e);
-            LogCountLabel.Text = LogSvc.Entries.Count.ToString();
+            LogCountLabel.Text = LogSvc.Count.ToString();
         }
 
         // ── Tunnel group tab strip (UI-only — ViewModel owns data) ────────────
@@ -910,9 +920,11 @@ namespace MasselGUARD
         {
             var groupNames    = ConfigSvc.Config.TunnelGroups.Select(g => g.Name).ToList();
             bool isGlobalAlways = ConfigSvc.Config.KillSwitchMode == "always";
+            var arMode = ConfigSvc.Config.AutoReconnectMode;
             var dlg = new Views.TunnelConfigDialog(
                 groupNames: groupNames,
-                isGlobalAlways: isGlobalAlways) { Owner = this };
+                isGlobalAlways: isGlobalAlways,
+                autoReconnectMode: arMode) { Owner = this };
             if (dlg.ShowDialog() != true) return;
             var stored = new StoredTunnel
             {
@@ -925,6 +937,7 @@ namespace MasselGUARD
                 PreDisconnectScript = dlg.ResultPreDisconnectScript,
                 PostDisconnectScript= dlg.ResultPostDisconnectScript,
                 KillSwitch          = dlg.ResultKillSwitch,
+                AutoReconnect       = arMode != "always" && dlg.ResultAutoReconnect,
             };
             ConfigSvc.Config.Tunnels.Add(stored);
             ConfigSvc.Save();
@@ -939,6 +952,8 @@ namespace MasselGUARD
                           && ConfigSvc.Config.DefaultAction == "activate";
             bool isOpen    = ConfigSvc.Config.OpenWifiTunnel   == stored.Name;
             bool isGlobalAlways = ConfigSvc.Config.KillSwitchMode == "always";
+            var  arMode         = ConfigSvc.Config.AutoReconnectMode;
+            bool arAlways       = arMode == "always";
 
             var groupNames = ConfigSvc.Config.TunnelGroups.Select(g => g.Name).ToList();
             var dlg = stored.Source == "local"
@@ -948,7 +963,10 @@ namespace MasselGUARD
                     stored.PreDisconnectScript, stored.PostDisconnectScript,
                     isDefault, isOpen, groupNames,
                     isKillSwitch: stored.KillSwitch || isGlobalAlways,
-                    isGlobalAlways: isGlobalAlways)
+                    isGlobalAlways: isGlobalAlways,
+                    isAutoReconnect: stored.AutoReconnect || arAlways,
+                    autoReconnectMode: arMode,
+                    isSkipValidation: stored.SkipValidation)
                     { Owner = this }
                 : new Views.TunnelMetadataDialog(
                     stored.Name, stored.Group, stored.Notes,
@@ -957,7 +975,10 @@ namespace MasselGUARD
                     stored.PreDisconnectScript, stored.PostDisconnectScript,
                     isDefault, isOpen,
                     isKillSwitch: stored.KillSwitch || isGlobalAlways,
-                    isGlobalAlways: isGlobalAlways)
+                    isGlobalAlways: isGlobalAlways,
+                    isAutoReconnect: stored.AutoReconnect || arAlways,
+                    autoReconnectMode: arMode,
+                    isSkipValidation: stored.SkipValidation)
                     { Owner = this };
 
             if (dlg.ShowDialog() != true) return;
@@ -983,7 +1004,9 @@ namespace MasselGUARD
                 stored.PostDisconnectScript = tcd.ResultPostDisconnectScript;
                 newDefault = tcd.ResultIsDefault;
                 newOpen    = tcd.ResultIsOpenProtection;
-                if (!isGlobalAlways) stored.KillSwitch = tcd.ResultKillSwitch;
+                if (!isGlobalAlways) stored.KillSwitch    = tcd.ResultKillSwitch;
+                if (!arAlways)      stored.AutoReconnect = tcd.ResultAutoReconnect;
+                stored.SkipValidation = tcd.ResultSkipValidation;
             }
             else if (dlg is Views.TunnelMetadataDialog tmd)
             {
@@ -995,7 +1018,9 @@ namespace MasselGUARD
                 stored.PostDisconnectScript = tmd.ResultPostDisconnectScript;
                 newDefault = tmd.ResultIsDefault;
                 newOpen    = tmd.ResultIsOpenProtection;
-                if (!isGlobalAlways) stored.KillSwitch = tmd.ResultKillSwitch;
+                if (!isGlobalAlways) stored.KillSwitch    = tmd.ResultKillSwitch;
+                if (!arAlways)      stored.AutoReconnect = tmd.ResultAutoReconnect;
+                stored.SkipValidation = tmd.ResultSkipValidation;
             }
             else return;
 
@@ -1027,14 +1052,18 @@ namespace MasselGUARD
 
         private void OnDeleteTunnel(StoredTunnel stored)
         {
-            var msg = stored.Source == "local"
+            var msg   = stored.Source == "local"
                 ? Lang.T("ConfirmDeleteTunnel", stored.Name)
                 : Lang.T("ConfirmUnlinkTunnel", stored.Name);
+            var title = stored.Source == "local"
+                ? Lang.T("BtnDeleteTunnel")
+                : Lang.T("BtnUnlinkTunnel");
 
-            if (MessageBox.Show(msg, "MasselGUARD",
-                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            if (!ShowThemedYesNo(msg, title))
                 return;
 
+            // Close any open history entry so the tunnel doesn't appear permanently active.
+            HistorySvc.RecordDisconnect(stored.Name);
             ConfigSvc.Config.Tunnels.Remove(stored);
             ConfigSvc.Save();
             LogSvc.Ok($"Tunnel removed: {stored.Name}");
@@ -1106,7 +1135,7 @@ namespace MasselGUARD
         }
 
         // ── Quick Connect ─────────────────────────────────────────────────────
-        private void QuickConnect_Click(object sender, RoutedEventArgs e)
+        private async void QuickConnect_Click(object sender, RoutedEventArgs e)
         {
             var ofd = new Microsoft.Win32.OpenFileDialog
             {
@@ -1123,7 +1152,7 @@ namespace MasselGUARD
                 Path   = ofd.FileName,
             };
 
-            TunnelSvc.Connect(stored, ConfigSvc.Config);
+            await Task.Run(() => TunnelSvc.Connect(stored, ConfigSvc.Config));
             _vm.RebuildTunnelList();
             _vm.RefreshTunnelStatus();
             UpdateTunnelLabel();
@@ -1261,7 +1290,7 @@ namespace MasselGUARD
 
         // ── Theme application ─────────────────────────────────────────────────
         /// <summary>
-        /// Applies the active theme based on UseCustomTheme + SystemThemeMode from config.
+        /// Applies the active theme based on ActiveTheme + SystemThemeMode from config.
         /// Called on startup and after settings are saved.
         /// </summary>
         internal void ApplyThemeFromConfig()
@@ -1274,18 +1303,11 @@ namespace MasselGUARD
                 _       => ThemeManager.GetSystemIsDark()   // "auto"
             };
 
-            if (!cfg.UseCustomTheme)
-            {
+            var theme = cfg.ActiveTheme;
+            if (string.IsNullOrEmpty(theme) || theme == "__system__")
                 ThemeManager.Instance.LoadSystem(isDark);
-            }
             else
-            {
-                var target = isDark ? cfg.ActiveDarkTheme : cfg.ActiveLightTheme;
-                if (!string.IsNullOrEmpty(target))
-                    ThemeManager.Instance.Load(target);
-                else
-                    ThemeManager.Instance.LoadSystem(isDark);
-            }
+                ThemeManager.Instance.Load(theme, isDark);
 
             // Font override: applied after theme so it wins over the theme's own font.
             ThemeManager.ApplyFontOverride(cfg.FontOverrideEnabled, cfg.FontOverrideFamily, cfg.FontOverrideSize);
@@ -1396,71 +1418,57 @@ namespace MasselGUARD
         private List<string> GetAvailableTunnels() => GetTunnelNames();
 
         // ── Orphaned service detection ────────────────────────────────────────
-        public record OrphanedService(string ServiceName, string TunnelName, bool TunnelActive);
+        public record OrphanedService(string ServiceName, string TunnelName);
+
+        /// <summary>
+        /// Service names queued for deletion — hidden from the orphan list immediately
+        /// so the user doesn't see them again while removal is in progress.
+        /// Entries are pruned automatically once SCM confirms they are gone.
+        /// </summary>
+        private readonly System.Collections.Generic.HashSet<string> _pendingOrphanDeletion =
+            new(StringComparer.OrdinalIgnoreCase);
 
         public List<OrphanedService> GetOrphanedServices()
         {
             var result = new List<OrphanedService>();
-
-            // Tunnels this session intentionally has active — never flag those
-            var activeInApp = new System.Collections.Generic.HashSet<string>(
-                _vm.TunnelList.Where(t => t.IsActive).Select(t => t.Name),
-                StringComparer.OrdinalIgnoreCase);
-
-            // Tunnel names configured in this install (used as a fallback identifier)
-            var tracked = new System.Collections.Generic.HashSet<string>(
-                ConfigSvc.Config.Tunnels.Select(t => t.Name),
-                StringComparer.OrdinalIgnoreCase);
-
             try
             {
+                var presentInScm = new System.Collections.Generic.HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase);
+
                 foreach (var svc in System.ServiceProcess.ServiceController.GetServices())
                 {
                     const string prefix = "WireGuardTunnel$";
                     if (!svc.ServiceName.StartsWith(prefix,
                         StringComparison.OrdinalIgnoreCase)) continue;
 
+                    presentInScm.Add(svc.ServiceName);
+
+                    // Running services are actively in use — not orphans.
+                    // Both WireGuard for Windows and MasselGUARD delete the SCM entry
+                    // when a tunnel is deactivated, so any stopped service is leftover debris.
+                    if (svc.Status == System.ServiceProcess.ServiceControllerStatus.Running)
+                        continue;
+
+                    // Already queued for deletion — hide until SCM confirms it is gone.
+                    if (_pendingOrphanDeletion.Contains(svc.ServiceName)) continue;
+
                     var name = svc.ServiceName[prefix.Length..];
-
-                    // Never flag a tunnel this session is managing
-                    if (activeInApp.Contains(name)) continue;
-
-                    // Primary: DisplayName contains "MasselGUARD"
-                    // (e.g. "WireGuard Tunnel: MasselGUARD - TunnelName")
-                    // Secondary: Description registry value contains "MasselGUARD"
-                    // Tertiary: tunnel name matches one in our config
-                    bool isManagedByUs =
-                        svc.DisplayName.Contains("MasselGUARD",
-                            StringComparison.OrdinalIgnoreCase)
-                        || GetServiceDescription(svc.ServiceName).Contains("MasselGUARD",
-                            StringComparison.OrdinalIgnoreCase)
-                        || tracked.Contains(name);
-
-                    if (!isManagedByUs) continue;
-
-                    bool isRunning = svc.Status == System.ServiceProcess.ServiceControllerStatus.Running;
-                    result.Add(new OrphanedService(svc.ServiceName, name, isRunning));
+                    result.Add(new OrphanedService(svc.ServiceName, name));
                 }
+
+                // Prune entries that have already disappeared from SCM.
+                _pendingOrphanDeletion.RemoveWhere(s => !presentInScm.Contains(s));
             }
             catch { }
 
             return result;
         }
 
-        /// <summary>Reads the service Description value from the registry.</summary>
-        private static string GetServiceDescription(string serviceName)
-        {
-            try
-            {
-                using var key = Microsoft.Win32.Registry.LocalMachine
-                    .OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}");
-                return key?.GetValue("Description") as string ?? "";
-            }
-            catch { return ""; }
-        }
-
         public void RemoveOrphan(OrphanedService orphan)
         {
+            // Mark as pending immediately so the next scan hides it.
+            _pendingOrphanDeletion.Add(orphan.ServiceName);
             try
             {
                 // ForceRemoveService stops (if running) and deletes the SCM entry —
@@ -1470,6 +1478,8 @@ namespace MasselGUARD
             }
             catch (Exception ex)
             {
+                // Removal failed — unmark so it reappears in the list.
+                _pendingOrphanDeletion.Remove(orphan.ServiceName);
                 LogSvc.Warn($"Remove orphan failed ({orphan.TunnelName}): {ex.Message}");
             }
         }
@@ -2276,7 +2286,7 @@ namespace MasselGUARD
             var border = new System.Windows.Controls.Border
             {
                 Background      = (System.Windows.Media.Brush)Application.Current.Resources["WindowBg"],
-                BorderBrush     = (System.Windows.Media.Brush)Application.Current.Resources["BorderColor"],
+                BorderBrush     = (System.Windows.Media.Brush)Application.Current.Resources["Accent"],
                 BorderThickness = new Thickness(1),
                 CornerRadius    = new System.Windows.CornerRadius(6),
                 Padding         = new Thickness(20),
@@ -2336,7 +2346,7 @@ namespace MasselGUARD
             var border = new System.Windows.Controls.Border
             {
                 Background      = (System.Windows.Media.Brush)Application.Current.Resources["WindowBg"],
-                BorderBrush     = (System.Windows.Media.Brush)Application.Current.Resources["BorderColor"],
+                BorderBrush     = (System.Windows.Media.Brush)Application.Current.Resources["Accent"],
                 BorderThickness = new Thickness(1),
                 CornerRadius    = new System.Windows.CornerRadius(6),
                 Padding         = new Thickness(20),
@@ -2400,7 +2410,7 @@ namespace MasselGUARD
             var border = new System.Windows.Controls.Border
             {
                 Background      = (System.Windows.Media.Brush)Application.Current.Resources["WindowBg"],
-                BorderBrush     = (System.Windows.Media.Brush)Application.Current.Resources["BorderColor"],
+                BorderBrush     = (System.Windows.Media.Brush)Application.Current.Resources["Accent"],
                 BorderThickness = new Thickness(1),
                 CornerRadius    = new System.Windows.CornerRadius(6),
                 Padding         = new Thickness(20),
@@ -2721,7 +2731,7 @@ namespace MasselGUARD
             var border = new System.Windows.Controls.Border
             {
                 Background=(System.Windows.Media.Brush)Application.Current.Resources["WindowBg"],
-                BorderBrush=(System.Windows.Media.Brush)Application.Current.Resources["BorderColor"],
+                BorderBrush=(System.Windows.Media.Brush)Application.Current.Resources["Accent"],
                 BorderThickness=new Thickness(1),
                 CornerRadius=new System.Windows.CornerRadius(6),
                 Padding=new Thickness(20),
@@ -3112,9 +3122,13 @@ namespace MasselGUARD
             const double axisH   = 20;  // tall enough for two-line "ddd\nHH:mm" labels
 
             // ── Collect tunnels in the window ─────────────────────────────────
-            var allEntries = HistorySvc.Entries
-                .Where(e => e.ConnectedAt >= start || (e.DisconnectedAt ?? now) >= start)
-                .ToList();
+            bool showTunnels = ConfigSvc.Config.ShowTimeline && ConfigSvc.Config.StoreConnectionHistory;
+
+            var allEntries = showTunnels
+                ? HistorySvc.Entries
+                    .Where(e => e.ConnectedAt >= start || (e.DisconnectedAt ?? now) >= start)
+                    .ToList()
+                : new List<Models.ConnectionHistoryEntry>();
 
             var tunnelNames = allEntries
                 .Select(e => e.TunnelName)
@@ -3122,9 +3136,10 @@ namespace MasselGUARD
                 .OrderBy(n => n)
                 .ToList();
 
-            foreach (var tvm in _vm.TunnelList.Where(t => t.IsActive))
-                if (!tunnelNames.Contains(tvm.Name, StringComparer.OrdinalIgnoreCase))
-                    tunnelNames.Add(tvm.Name);
+            if (showTunnels)
+                foreach (var tvm in _vm.TunnelList.Where(t => t.IsActive))
+                    if (!tunnelNames.Contains(tvm.Name, StringComparer.OrdinalIgnoreCase))
+                        tunnelNames.Add(tvm.Name);
 
             // ── Assign colours + build cached data ───────────────────────────
             for (int i = 0; i < tunnelNames.Count; i++)

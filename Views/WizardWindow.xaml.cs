@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using MasselGUARD.Models;
@@ -13,9 +14,9 @@ namespace MasselGUARD.Views
         private readonly MainWindow      _main;
         private readonly bool            _isUpgrade;
 
-        private bool _settingControls; // true while programmatically updating controls — suppresses event handlers
+        private bool _settingControls;
 
-        private const int TotalSteps = 5; // steps 0-4
+        private const int TotalSteps = 7; // steps 0-6
 
         public WizardWindow(MainWindow main, bool isUpgrade = false)
         {
@@ -32,7 +33,6 @@ namespace MasselGUARD.Views
             InitializeComponent();
             DataContext = _vm;
 
-            // Language picker
             WizLangPicker.Items.Clear();
             foreach (var item in _vm.AvailableLanguages)
                 WizLangPicker.Items.Add(item);
@@ -51,19 +51,12 @@ namespace MasselGUARD.Views
         // ── Step visibility ───────────────────────────────────────────────────
         private void UpdateStepVisibility()
         {
-            // 5 steps: Step0–Step4
-            var steps = new[] { Step0, Step1, Step2, Step3, Step4 };
+            var steps = new[] { Step0, Step1, Step2, Step3, Step4, Step5, Step6 };
             for (int i = 0; i < steps.Length; i++)
                 if (steps[i] != null)
-                    steps[i].Visibility = i == _vm.Step
-                        ? Visibility.Visible : Visibility.Collapsed;
+                    steps[i].Visibility = i == _vm.Step ? Visibility.Visible : Visibility.Collapsed;
 
             // ── Step 0: Welcome ──────────────────────────────────────────────
-            if (WizInstallChoice != null)
-                WizInstallChoice.Visibility =
-                    (!_isUpgrade && _main.AppRunMode == MainWindow.AppRunModeKind.Standalone)
-                    ? Visibility.Visible : Visibility.Collapsed;
-
             if (WizUpgradeNotice != null)
                 WizUpgradeNotice.Visibility = _isUpgrade ? Visibility.Visible : Visibility.Collapsed;
             if (_isUpgrade)
@@ -80,10 +73,10 @@ namespace MasselGUARD.Views
             {
                 _settingControls = true;
                 WizLangPicker.SelectedItem = _vm.SelectedLanguage;
-                bool autoTheme = _main.ConfigSvc.Config.AutoTheme;
-                if (WizThemeAuto != null)  WizThemeAuto.IsChecked  = autoTheme;
-                if (WizThemeDark != null)  WizThemeDark.IsChecked  = !autoTheme && IsCurrentThemeDark();
-                if (WizThemeLight != null) WizThemeLight.IsChecked = !autoTheme && !IsCurrentThemeDark();
+                var sysMode = _main.ConfigSvc.Config.SystemThemeMode ?? "auto";
+                if (WizThemeAuto  != null) WizThemeAuto.IsChecked  = sysMode == "auto";
+                if (WizThemeDark  != null) WizThemeDark.IsChecked  = sysMode == "dark";
+                if (WizThemeLight != null) WizThemeLight.IsChecked = sysMode == "light";
                 _settingControls = false;
             }
 
@@ -97,33 +90,121 @@ namespace MasselGUARD.Views
                 _settingControls = false;
             }
 
-            // ── Step 3: Automation ───────────────────────────────────────────
+            // ── Step 3: Startup & Installation ───────────────────────────────
             if (_vm.Step == 3)
             {
+                if (WizInstallChoice != null)
+                    WizInstallChoice.Visibility =
+                        (!_isUpgrade && _main.AppRunMode == MainWindow.AppRunModeKind.Standalone)
+                        ? Visibility.Visible : Visibility.Collapsed;
+
                 _settingControls = true;
-                WizManualToggle.IsChecked = _vm.DisableWifiRules;
+                var cfg = _main.ConfigSvc.Config;
+                if (WizStartWithWindowsToggle != null)
+                    WizStartWithWindowsToggle.IsChecked = cfg.StartWithWindows;
+                if (WizConfirmOnCloseToggle != null)
+                    WizConfirmOnCloseToggle.IsChecked = cfg.ConfirmOnClose;
+                _settingControls = false;
+            }
+
+            // ── Step 4: WiFi Automation ──────────────────────────────────────
+            if (_vm.Step == 4)
+            {
+                _settingControls = true;
+                if (WizManualToggle != null)
+                    WizManualToggle.IsChecked = _vm.DisableWifiRules;
                 if (WizShowRulesToggle != null)
                     WizShowRulesToggle.IsChecked = _main.ConfigSvc.Config.ShowWifiRulesOnMainWindow;
+                if (WizDnsIndicatorToggle != null)
+                    WizDnsIndicatorToggle.IsChecked = _main.ConfigSvc.Config.ShowDnsIndicator;
                 _settingControls = false;
                 if (WizShowRulesCard != null)
                     WizShowRulesCard.Visibility = _vm.DisableWifiRules
                         ? Visibility.Collapsed : Visibility.Visible;
             }
 
-            // ── Step 4: Done ─────────────────────────────────────────────────
-            if (_vm.Step == 4)
+            // ── Step 5: Behavior ─────────────────────────────────────────────
+            if (_vm.Step == 5)
+            {
+                _settingControls = true;
+                var cfg = _main.ConfigSvc.Config;
+                string ar = cfg.AutoReconnectMode;
+                if (WizArOff       != null) WizArOff.IsChecked       = ar == "off";
+                if (WizArPerTunnel != null) WizArPerTunnel.IsChecked = ar == "per-tunnel";
+                if (WizArAlways    != null) WizArAlways.IsChecked    = ar == "always";
+                if (WizArOff != null && WizArPerTunnel != null && WizArAlways != null
+                    && WizArOff.IsChecked != true && WizArPerTunnel.IsChecked != true && WizArAlways.IsChecked != true)
+                    WizArOff.IsChecked = true;
+
+                if (WizStoreConnectionHistoryToggle != null)
+                    WizStoreConnectionHistoryToggle.IsChecked = cfg.StoreConnectionHistory;
+                if (WizStoreWifiHistoryToggle != null)
+                    WizStoreWifiHistoryToggle.IsChecked = cfg.StoreWifiHistory;
+                if (WizTrayPopupToggle != null)
+                    WizTrayPopupToggle.IsChecked = cfg.ShowTrayPopupOnSwitch;
+                _settingControls = false;
+            }
+
+            // ── Step 6: Done ─────────────────────────────────────────────────
+            if (_vm.Step == 6)
             {
                 if (WizVersionLabel != null)
                     WizVersionLabel.Text = $"MasselGUARD v{UpdateChecker.CurrentVersionString}";
                 if (WizCheckUpdateBtn != null)
                     WizCheckUpdateBtn.Content = Lang.T("BtnCheckUpdate");
+                BuildSummary();
             }
 
-            // Nav buttons
             BtnBack.IsEnabled = _vm.CanGoBack;
-            BtnNext.Content   = _vm.IsLastStep
-                ? Lang.T("WizardBtnFinish")
-                : Lang.T("WizardBtnNext");
+            BtnNext.Content   = _vm.IsLastStep && _pendingRelease != null
+                ? "Save & Update"
+                : _vm.IsLastStep
+                    ? Lang.T("WizardBtnFinish")
+                    : Lang.T("WizardBtnNext");
+        }
+
+        // ── Summary (step 6) ──────────────────────────────────────────────────
+        private void BuildSummary()
+        {
+            if (WizSummaryPanel == null) return;
+            WizSummaryPanel.Children.Clear();
+            var cfg = _main.ConfigSvc.Config;
+
+            void Row(string label, string value)
+            {
+                var g = new System.Windows.Controls.Grid();
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var lbl = new TextBlock
+                {
+                    Text       = label,
+                    FontFamily = (FontFamily)FindResource("Theme.FontFamily"),
+                    FontSize   = 10,
+                    Foreground = (Brush)FindResource("TextMuted"),
+                    VerticalAlignment = VerticalAlignment.Top,
+                };
+                var val = new TextBlock
+                {
+                    Text       = value,
+                    FontFamily = (FontFamily)FindResource("Theme.FontFamily"),
+                    FontSize   = 10,
+                    Foreground = (Brush)FindResource("TextPrimary"),
+                    TextWrapping = TextWrapping.Wrap,
+                };
+                System.Windows.Controls.Grid.SetColumn(lbl, 0);
+                System.Windows.Controls.Grid.SetColumn(val, 1);
+                g.Children.Add(lbl);
+                g.Children.Add(val);
+                g.Margin = new Thickness(0, 0, 0, 4);
+                WizSummaryPanel.Children.Add(g);
+            }
+
+            Row("Mode",              cfg.Mode.ToString());
+            Row("Auto-reconnect",    cfg.AutoReconnectMode);
+            Row("Start with Windows", cfg.StartWithWindows ? "Yes" : "No");
+            Row("Record connections", cfg.StoreConnectionHistory ? "On" : "Off");
+            Row("Record WiFi SSID",   cfg.StoreWifiHistory ? "On" : "Off");
+            Row("Tray notifications", cfg.ShowTrayPopupOnSwitch ? "On" : "Off");
         }
 
         private bool IsCurrentThemeDark()
@@ -138,7 +219,7 @@ namespace MasselGUARD.Views
         // ── Dot indicators ────────────────────────────────────────────────────
         private void UpdateDots()
         {
-            var dots   = new[] { Dot0, Dot1, Dot2, Dot3, Dot4 };
+            var dots   = new[] { Dot0, Dot1, Dot2, Dot3, Dot4, Dot5, Dot6 };
             var accent = (Brush)FindResource("Accent");
             var dim    = (Brush)FindResource("BorderColor");
             for (int i = 0; i < dots.Length; i++)
@@ -148,7 +229,17 @@ namespace MasselGUARD.Views
 
         // ── Navigation ────────────────────────────────────────────────────────
         private void BtnBack_Click(object sender, RoutedEventArgs e) => _vm.BackCommand.Execute(null);
-        private void BtnNext_Click(object sender, RoutedEventArgs e) => _vm.NextCommand.Execute(null);
+
+        private async void BtnNext_Click(object sender, RoutedEventArgs e)
+        {
+            if (_vm.IsLastStep && _pendingRelease != null)
+            {
+                await StartUpdateAsync(_pendingRelease);
+                return;
+            }
+            _vm.NextCommand.Execute(null);
+        }
+
         private void BtnSkip_Click(object sender, RoutedEventArgs e) => _vm.SkipCommand.Execute(null);
 
         // ── Mode ──────────────────────────────────────────────────────────────
@@ -176,26 +267,36 @@ namespace MasselGUARD.Views
             var cfg = _main.ConfigSvc.Config;
             if (WizThemeAuto?.IsChecked == true)
             {
-                cfg.AutoTheme = true;
-                // Apply system preference immediately
+                cfg.SystemThemeMode = "auto";
                 bool sysIsDark = ThemeManager.GetSystemIsDark();
-                ThemeManager.Instance.Load(sysIsDark
-                    ? (cfg.ActiveDarkTheme  ?? "default-dark")
-                    : (cfg.ActiveLightTheme ?? "default-light"));
+                ThemeManager.Instance.Load(cfg.ActiveTheme ?? "__system__", sysIsDark);
             }
             else if (WizThemeDark?.IsChecked == true)
             {
-                cfg.AutoTheme = false;
-                ThemeManager.Instance.Load(cfg.ActiveDarkTheme ?? "default-dark");
+                cfg.SystemThemeMode = "dark";
+                ThemeManager.Instance.Load(cfg.ActiveTheme ?? "__system__", true);
             }
             else if (WizThemeLight?.IsChecked == true)
             {
-                cfg.AutoTheme = false;
-                ThemeManager.Instance.Load(cfg.ActiveLightTheme ?? "default-light");
+                cfg.SystemThemeMode = "light";
+                ThemeManager.Instance.Load(cfg.ActiveTheme ?? "__system__", false);
             }
         }
 
-        // ── Automation ────────────────────────────────────────────────────────
+        // ── Startup ───────────────────────────────────────────────────────────
+        private void WizStartWithWindows_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_settingControls) return;
+            _main.ConfigSvc.Config.StartWithWindows = WizStartWithWindowsToggle?.IsChecked == true;
+        }
+
+        private void WizConfirmOnClose_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_settingControls) return;
+            _main.ConfigSvc.Config.ConfirmOnClose = WizConfirmOnCloseToggle?.IsChecked == true;
+        }
+
+        // ── WiFi Automation ───────────────────────────────────────────────────
         private void WizManualToggle_Changed(object sender, RoutedEventArgs e)
         {
             bool on = WizManualToggle?.IsChecked == true;
@@ -210,14 +311,53 @@ namespace MasselGUARD.Views
                 WizShowRulesToggle?.IsChecked == true;
         }
 
+        private void WizDnsIndicator_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_settingControls) return;
+            _main.ConfigSvc.Config.ShowDnsIndicator = WizDnsIndicatorToggle?.IsChecked == true;
+        }
+
+        // ── Behavior ─────────────────────────────────────────────────────────
+        private void WizArMode_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_settingControls) return;
+            if (sender is RadioButton rb)
+                _main.ConfigSvc.Config.AutoReconnectMode = rb.Tag as string ?? "off";
+        }
+
+        private void WizStoreConnectionHistory_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_settingControls) return;
+            _main.ConfigSvc.Config.StoreConnectionHistory =
+                WizStoreConnectionHistoryToggle?.IsChecked == true;
+        }
+
+        private void WizStoreWifiHistory_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_settingControls) return;
+            _main.ConfigSvc.Config.StoreWifiHistory =
+                WizStoreWifiHistoryToggle?.IsChecked == true;
+        }
+
+        private void WizTrayPopup_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_settingControls) return;
+            _main.ConfigSvc.Config.ShowTrayPopupOnSwitch =
+                WizTrayPopupToggle?.IsChecked == true;
+        }
+
         // ── Install choice ────────────────────────────────────────────────────
         private void WizRunPortable_Click(object sender, RoutedEventArgs e)
-            => _vm.NextCommand.Execute(null);
+        {
+            if (WizInstallChoice != null)
+                WizInstallChoice.Visibility = Visibility.Collapsed;
+        }
 
         private void WizInstallNow_Click(object sender, RoutedEventArgs e)
         {
             _main.RunInstallPublic();
-            _vm.NextCommand.Execute(null);
+            if (WizInstallChoice != null)
+                WizInstallChoice.Visibility = Visibility.Collapsed;
         }
 
         // ── Import settings ───────────────────────────────────────────────────
@@ -250,17 +390,12 @@ namespace MasselGUARD.Views
                     }
                 }
 
-                // Build summary
-                var cfg = _main.ConfigSvc.Config;
-                string summary = $"{cfg.Rules.Count} WiFi rules, {cfg.TunnelGroups.Count} groups, mode: {cfg.Mode}";
-
                 if (WizImportResultLabel != null)
                 {
                     WizImportResultLabel.Text       = Lang.T("WizardImportSuccess");
                     WizImportResultLabel.Visibility = Visibility.Visible;
                 }
 
-                // Sync VM from imported config
                 _vm.LoadFromConfig();
 
                 // Jump to Done step
@@ -279,15 +414,90 @@ namespace MasselGUARD.Views
         }
 
         // ── Update check ──────────────────────────────────────────────────────
+        private ReleaseInfo? _pendingRelease;
+
         private async void WizCheckUpdate_Click(object sender, RoutedEventArgs e)
         {
+            // Second click after a found update → trigger install
+            if (_pendingRelease != null)
+            {
+                await StartUpdateAsync(_pendingRelease);
+                return;
+            }
+
             if (WizCheckUpdateBtn != null)
             {
                 WizCheckUpdateBtn.IsEnabled = false;
                 WizCheckUpdateBtn.Content   = Lang.T("SettingsUpdateChecking");
             }
-            await _vm.CheckUpdateCommand.ExecuteAsync(null);
+
+            ReleaseInfo? latest = null;
+            try
+            {
+                latest = await UpdateChecker.CheckNowAsync(
+                    _main.ConfigSvc.Config, _main.ConfigSvc.Save);
+            }
+            catch { /* network unavailable */ }
+
             if (WizCheckUpdateBtn != null) WizCheckUpdateBtn.IsEnabled = true;
+
+            if (latest == null)
+            {
+                if (WizVersionLabel    != null) WizVersionLabel.Text    = $"MasselGUARD v{UpdateChecker.CurrentVersionString} — could not reach server";
+                if (WizCheckUpdateBtn  != null) WizCheckUpdateBtn.Content = Lang.T("BtnCheckUpdate");
+                return;
+            }
+
+            if (UpdateChecker.IsNewerVersion(latest.TagName))
+            {
+                _pendingRelease = latest;
+                if (WizVersionLabel   != null) WizVersionLabel.Text     = $"v{latest.TagName} is available  →  you are on v{UpdateChecker.CurrentVersionString}";
+                if (WizCheckUpdateBtn != null) WizCheckUpdateBtn.Content = Lang.T("BtnUpdate") is { Length: > 0 } s ? s : "Update now";
+                // Flip the footer Finish button to "Save & Update"
+                if (BtnNext != null) BtnNext.Content = "Save & Update";
+            }
+            else if (UpdateChecker.IsAheadOfLatest(latest.TagName))
+            {
+                if (WizVersionLabel   != null) WizVersionLabel.Text     = $"MasselGUARD v{UpdateChecker.CurrentVersionString} — ahead of release";
+                if (WizCheckUpdateBtn != null) { WizCheckUpdateBtn.Content = "✓  Dev build"; WizCheckUpdateBtn.IsEnabled = false; }
+            }
+            else
+            {
+                if (WizVersionLabel   != null) WizVersionLabel.Text     = $"MasselGUARD v{UpdateChecker.CurrentVersionString} — up to date";
+                if (WizCheckUpdateBtn != null) { WizCheckUpdateBtn.Content = "✓  Up to date"; WizCheckUpdateBtn.IsEnabled = false; }
+            }
+        }
+
+        private async System.Threading.Tasks.Task StartUpdateAsync(ReleaseInfo release)
+        {
+            if (release.ZipUrl == null)
+            {
+                _main.ShowThemedInfo(Lang.T("UpdateNoAsset"), "MasselGUARD");
+                return;
+            }
+
+            // Save wizard settings before handing off to updater
+            _vm.NextCommand.Execute(null); // triggers ApplyAndFinish if on last step, otherwise harmless
+
+            if (WizCheckUpdateBtn != null) WizCheckUpdateBtn.IsEnabled = false;
+            if (WizVersionLabel   != null) WizVersionLabel.Text = Lang.T("UpdateDownloading", release.TagName);
+
+            var progress = new Progress<string>(msg =>
+                Dispatcher.Invoke(() => { if (WizVersionLabel != null) WizVersionLabel.Text = msg; }));
+
+            try
+            {
+                await UpdateChecker.UpdateAsync(
+                    release, progress, _main.ConfigSvc.Config, _main.ConfigSvc.Save,
+                    onShutdown: () => System.Windows.Application.Current.Dispatcher.Invoke(
+                        () => ((App)System.Windows.Application.Current).ShutdownApp()));
+                // UpdateAsync calls onShutdown on success — execution never continues here.
+            }
+            catch (Exception ex)
+            {
+                if (WizCheckUpdateBtn != null) { WizCheckUpdateBtn.IsEnabled = true; WizCheckUpdateBtn.Content = "Retry"; }
+                if (WizVersionLabel   != null) WizVersionLabel.Text = $"Update failed: {ex.Message}";
+            }
         }
 
         // ── Window chrome ─────────────────────────────────────────────────────
