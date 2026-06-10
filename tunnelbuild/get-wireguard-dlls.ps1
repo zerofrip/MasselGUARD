@@ -90,7 +90,7 @@ if (Test-Path $tnDll) {
         # Use Start-Process to avoid PowerShell treating git's stderr progress
         # output as a NativeCommandError (git writes info to stderr by design)
         $proc = Start-Process -FilePath 'git' `
-            -ArgumentList @('clone','--depth=1','https://git.zx2c4.com/wireguard-windows',$wgWinDir) `
+            -ArgumentList @('clone','--depth=1','https://git.zx2c4.com/wireguard-windows',"`"$wgWinDir`"") `
             -NoNewWindow -Wait -PassThru `
             -RedirectStandardOutput (Join-Path $Deps 'git_out.txt') `
             -RedirectStandardError  (Join-Path $Deps 'git_err.txt')

@@ -119,7 +119,16 @@ echo.
 echo  OK  MasselGUARDcli.exe
 echo.
 
-rem ── Step 3: copy lang + theme folders into dist ──────────────────────────────
+rem ── Step 3a: copy install helper ─────────────────────────────────────────────
+if exist "%~dp0install-dotnet.bat" (
+    copy /y "%~dp0install-dotnet.bat" "!DIST!\install-dotnet.bat" >nul
+    echo  OK  install-dotnet.bat
+) else (
+    echo  WARNING: install-dotnet.bat not found -- skipped.
+)
+echo.
+
+rem ── Step 3b: copy lang + theme folders into dist ──────────────────────────────
 echo  -------------------------------------------------------
 echo   Copying lang + theme folders...
 echo  -------------------------------------------------------
@@ -168,8 +177,9 @@ echo  ==========================================
 echo   BUILD SUCCESSFUL
 echo  ==========================================
 echo.
-echo   dist\MasselGUARD.exe     (GUI application)
-echo   dist\MasselGUARDcli.exe  (command-line interface)
+echo   dist\MasselGUARD.exe        (GUI application)
+echo   dist\MasselGUARDcli.exe     (command-line interface)
+echo   dist\install-dotnet.bat     (.NET 10 install helper)
 echo   dist\lang\
 echo   dist\theme\
 if "!DLL_OK!"=="1" (
