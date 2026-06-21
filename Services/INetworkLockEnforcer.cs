@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using MasselGUARD.Models;
 
 namespace MasselGUARD.Services

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MasselGUARD;
 using MasselGUARD.Agent.Events;
+using MasselGUARD.Agent.Services;
 using MasselGUARD.Cli;
 using MasselGUARD.Models;
 using MasselGUARD.Services;
