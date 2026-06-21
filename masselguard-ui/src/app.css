@@ -1,0 +1,8 @@
+@import '@mg-ui-core/styles/tokens.css';
+@import 'tailwindcss';
+
+html,
+body,
+#svelte {
+  height: 100%;
+}

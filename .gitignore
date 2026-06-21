@@ -12,3 +12,6 @@ obj/
 # DLLs placed next to the project for local dev
 tunnel.dll
 wireguard.dll
+
+# Tauri UI dependencies — npm install in masselguard-ui/
+masselguard-ui/node_modules/
