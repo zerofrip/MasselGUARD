@@ -31,7 +31,7 @@ jobs:
       - name: Publish MasselGUARDAgent
         run: >
           dotnet publish MasselGUARDAgent/MasselGUARDAgent.csproj
-          -c Release -o dist
+          -c Release -o dist/agent
           -p:Version=${{ steps.ver.outputs.version }}
           -p:AssemblyVersion=${{ steps.ver.outputs.version }}.0
           -p:FileVersion=${{ steps.ver.outputs.version }}.0
@@ -49,7 +49,7 @@ jobs:
       - name: Publish MasselGUARD (WPF legacy)
         run: >
           dotnet publish MasselGUARD.csproj
-          -c Release -o dist
+          -c Release -o dist/wpf
           -p:Version=${{ steps.ver.outputs.version }}
           -p:AssemblyVersion=${{ steps.ver.outputs.version }}.0
           -p:FileVersion=${{ steps.ver.outputs.version }}.0
