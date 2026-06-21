@@ -29,5 +29,11 @@ namespace MasselGUARD.Models
 
         /// <summary>Bytes sent during this session. Zero when not recorded or HideAndNoStore.</summary>
         public long SessionTxBytes { get; set; }
+
+        /// <summary>Primary peer endpoint at connect time (if known).</summary>
+        public string? Endpoint { get; set; }
+
+        /// <summary>Non-null when this entry records a failed connect attempt.</summary>
+        public string? FailureReason { get; set; }
     }
 }

@@ -151,6 +151,22 @@ namespace MasselGUARD.Models
         /// </summary>
         public string KillSwitchMode { get; set; } = "per-tunnel";
 
+        // ── Tauri UI — experimental features ─────────────────────────────────
+        /// <summary>Split-tunnel rule definitions (UI-first; enforcement via RouteGuard later).</summary>
+        public SplitTunnelRules SplitTunnel { get; set; } = new();
+
+        /// <summary>Network lock UI config (LAN/DNS exceptions; maps to kill switch today).</summary>
+        public NetworkLockConfig NetworkLock { get; set; } = new();
+
+        /// <summary>Override path to RouteGuard install (contains routeguard-service.exe).</summary>
+        public string? RouteGuardInstallPath { get; set; }
+
+        /// <summary>When true and RouteGuard running, delegate WFP network lock to RouteGuard (mutually exclusive with FirewallEnforcer).</summary>
+        public bool NetworkLockWfpDelegation { get; set; }
+
+        /// <summary>In-memory event ring buffer capacity for replay (64–4096).</summary>
+        public int EventRingSize { get; set; } = 512;
+
         // ── Validation ────────────────────────────────────────────────────────
         /// <summary>
         /// When true, pre-flight WireGuard config validation is skipped for ALL tunnels.
@@ -162,6 +178,25 @@ namespace MasselGUARD.Models
         // ── Update checker ───────────────────────────────────────────────────
         public DateTime LastUpdateCheck    { get; set; } = DateTime.MinValue;
         public string?  LatestKnownVersion { get; set; } = null;
+        /// <summary>Update channel: dev | nightly | beta | stable</summary>
+        public string UpdateChannel { get; set; } = "beta";
+        /// <summary>Base URL for manifest.json (default https://releases.masselguard.net)</summary>
+        public string? UpdateManifestUrl { get; set; }
+        /// <summary>Opt-in anonymous crash report upload</summary>
+        public bool CrashReportingEnabled { get; set; } = false;
+        public string? CrashReportUrl { get; set; }
+
+        /// <summary>UTC timestamp when user consented to local support bundle export.</summary>
+        public DateTime? SupportExportConsentAt { get; set; }
+        /// <summary>Include crash reports in local support bundle (independent of upload).</summary>
+        public bool SupportExportIncludeCrashes { get; set; } = false;
+
+        /// <summary>Opt-in anonymous usage telemetry (aggregates only).</summary>
+        public bool TelemetryEnabled { get; set; } = false;
+        /// <summary>UTC timestamp when user consented to telemetry.</summary>
+        public DateTime? TelemetryConsentAt { get; set; }
+        /// <summary>Telemetry upload endpoint (default https://telemetry.masselguard.net/v1/events)</summary>
+        public string? TelemetryUploadUrl { get; set; }
 
         // ── Computed (not serialised) ────────────────────────────────────────
         [JsonIgnore]
