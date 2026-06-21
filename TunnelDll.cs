@@ -94,6 +94,11 @@ namespace MasselGUARD
                    CallingConvention = CallingConvention.Cdecl)]
         internal static extern void WireGuardCloseAdapter(IntPtr adapter);
 
+        [DllImport("wireguard.dll", EntryPoint = "WireGuardGetConfiguration",
+                   CallingConvention = CallingConvention.Cdecl, SetLastError = true)]
+        internal static extern bool WireGuardGetConfiguration(
+            IntPtr adapter, byte[] buffer, ref uint bytes);
+
         internal const uint SC_MANAGER_ALL_ACCESS           = 0xF003F;
         internal const uint SERVICE_ALL_ACCESS              = 0xF01FF;
         internal const uint SERVICE_WIN32_OWN_PROCESS       = 0x00000010;
@@ -356,6 +361,78 @@ namespace MasselGUARD
             public long RxBytes;
             /// <summary>Cumulative bytes sent since the adapter was created.</summary>
             public long TxBytes;
+        }
+
+        /// <summary>Peer/handshake stats from wireguard.dll (local wireguard-NT tunnels only).</summary>
+        public struct RuntimeStats
+        {
+            public int PeerCount;
+            public long? LastHandshakeSecsAgo;
+        }
+
+        private const int WgConfigIfaceSize = 80;
+        private const int WgConfigPeerSize = 136;
+        private const int WgConfigAllowedIpSize = 24;
+
+        /// <summary>
+        /// Returns peer count and last-handshake age via WireGuardGetConfiguration.
+        /// Returns zeroed stats when the adapter is unavailable (companion tunnels, etc.).
+        /// </summary>
+        public static RuntimeStats GetRuntimeStats(string tunnelName)
+        {
+            var result = default(RuntimeStats);
+            if (!IsTunnelDllAvailable()) return result;
+
+            try
+            {
+                NativeMethods.SetDllDirectory(ExeDir);
+                IntPtr adapter = NativeMethods.WireGuardOpenAdapter(tunnelName);
+                if (adapter == IntPtr.Zero) return result;
+
+                try
+                {
+                    uint size = 4096;
+                    byte[] buf = new byte[size];
+                    if (!NativeMethods.WireGuardGetConfiguration(adapter, buf, ref size))
+                    {
+                        if (Marshal.GetLastWin32Error() != 234)
+                            return result;
+                        buf = new byte[size];
+                        if (!NativeMethods.WireGuardGetConfiguration(adapter, buf, ref size))
+                            return result;
+                    }
+
+                    if (size < WgConfigIfaceSize) return result;
+
+                    result.PeerCount = (int)BitConverter.ToUInt32(buf, 76);
+
+                    long? latestHandshake = null;
+                    int offset = WgConfigIfaceSize;
+                    for (int i = 0; i < result.PeerCount && offset + WgConfigPeerSize <= size; i++)
+                    {
+                        ulong handshake = BitConverter.ToUInt64(buf, offset + 120);
+                        if (handshake != 0)
+                        {
+                            var dt = DateTime.FromFileTimeUtc((long)handshake);
+                            var secsAgo = (long)Math.Max(0, (DateTime.UtcNow - dt).TotalSeconds);
+                            if (!latestHandshake.HasValue || secsAgo < latestHandshake)
+                                latestHandshake = secsAgo;
+                        }
+
+                        uint allowed = BitConverter.ToUInt32(buf, offset + 128);
+                        offset += WgConfigPeerSize + (int)allowed * WgConfigAllowedIpSize;
+                    }
+
+                    result.LastHandshakeSecsAgo = latestHandshake;
+                }
+                finally
+                {
+                    NativeMethods.WireGuardCloseAdapter(adapter);
+                }
+            }
+            catch { /* best effort */ }
+
+            return result;
         }
 
         /// <summary>

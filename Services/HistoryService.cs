@@ -182,13 +182,14 @@ namespace MasselGUARD.Services
         // ── Record events ─────────────────────────────────────────────────────
 
         /// <summary>Called when a tunnel successfully connects.</summary>
-        public void RecordConnect(string tunnelName, string source)
+        public void RecordConnect(string tunnelName, string source, string? endpoint = null)
         {
             var entry = new ConnectionHistoryEntry
             {
                 TunnelName  = tunnelName,
                 ConnectedAt = DateTime.UtcNow,
                 Source      = source,
+                Endpoint    = endpoint,
             };
 
             lock (_lock)
@@ -206,6 +207,55 @@ namespace MasselGUARD.Services
             }
             // Save asynchronously on a threadpool thread — don't block the UI thread.
             System.Threading.ThreadPool.QueueUserWorkItem(_ => Save());
+        }
+
+        /// <summary>Records a failed connect attempt.</summary>
+        public void RecordConnectFailure(string tunnelName, string reason, string? endpoint = null)
+        {
+            var entry = new ConnectionHistoryEntry
+            {
+                TunnelName    = tunnelName,
+                ConnectedAt   = DateTime.UtcNow,
+                DisconnectedAt = DateTime.UtcNow,
+                Source        = "Manual",
+                FailureReason = reason,
+                Endpoint      = endpoint,
+            };
+
+            lock (_lock)
+            {
+                _entries.Insert(0, entry);
+                if (_entries.Count > MaxEntries)
+                    _entries.RemoveRange(MaxEntries, _entries.Count - MaxEntries);
+            }
+            System.Threading.ThreadPool.QueueUserWorkItem(_ => Save());
+        }
+
+        public void ClearTunnelHistory(string? tunnelName = null)
+        {
+            lock (_lock)
+            {
+                if (string.IsNullOrEmpty(tunnelName))
+                    _entries.Clear();
+                else
+                    _entries.RemoveAll(e =>
+                        e.TunnelName.Equals(tunnelName, StringComparison.OrdinalIgnoreCase));
+            }
+            System.Threading.ThreadPool.QueueUserWorkItem(_ => Save());
+        }
+
+        public IReadOnlyList<ConnectionHistoryEntry> QueryTunnelHistory(
+            int limit = 100, string? tunnelName = null, bool includeFailures = true)
+        {
+            lock (_lock)
+            {
+                var q = _entries.AsEnumerable();
+                if (!string.IsNullOrEmpty(tunnelName))
+                    q = q.Where(e => e.TunnelName.Equals(tunnelName, StringComparison.OrdinalIgnoreCase));
+                if (!includeFailures)
+                    q = q.Where(e => string.IsNullOrEmpty(e.FailureReason));
+                return q.Take(limit).ToList();
+            }
         }
 
         /// <summary>

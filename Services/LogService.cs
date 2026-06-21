@@ -16,6 +16,7 @@ namespace MasselGUARD.Services
         private readonly List<LogEntry> _entries = new();
         private readonly object _lock = new();
         private LogLevel _minLevel = LogLevel.Ok;
+        private const int MaxRingLines = 500;
 
         /// <summary>
         /// Raised after each new entry is added.
@@ -53,7 +54,12 @@ namespace MasselGUARD.Services
         {
             if (level < _minLevel) return;
             var entry = new LogEntry(DateTime.Now, level, message, isContinuation);
-            lock (_lock) { _entries.Add(entry); }
+            lock (_lock)
+            {
+                _entries.Add(entry);
+                while (_entries.Count > MaxRingLines)
+                    _entries.RemoveAt(0);
+            }
             // Fire outside the lock — handlers may call back into LogService.
             EntryAdded?.Invoke(entry);
         }
@@ -75,5 +81,25 @@ namespace MasselGUARD.Services
         }
 
         public void Clear() { lock (_lock) { _entries.Clear(); } }
+
+        /// <summary>Last N log lines for support bundle export (thread-safe).</summary>
+        public string GetTailText(int maxLines = 500, int maxChars = 256 * 1024)
+        {
+            IReadOnlyList<LogEntry> snapshot;
+            lock (_lock)
+            {
+                var start = Math.Max(0, _entries.Count - maxLines);
+                snapshot = _entries.Skip(start).ToList();
+            }
+            var sb = new System.Text.StringBuilder();
+            foreach (var e in snapshot)
+            {
+                sb.AppendLine($"{e.Timestamp:yyyy-MM-dd HH:mm:ss}  [{e.Level,-5}]  {e.Message}");
+                if (sb.Length >= maxChars) break;
+            }
+            if (sb.Length > maxChars)
+                return sb.ToString(0, maxChars);
+            return sb.ToString();
+        }
     }
 }

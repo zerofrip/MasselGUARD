@@ -114,12 +114,15 @@ namespace MasselGUARD.Services
 
                 if (ok)
                 {
-                    // A successful connect supersedes any earlier intentional-disconnect
-                    // mark. Without this, a stale entry from a previous GUI/rule disconnect
-                    // (never consumed — the poll misses MasselGUARD's own transitions)
-                    // would swallow the next external-drop event.
                     _intentionalDisconnects.TryRemove(stored.Name, out _);
-                    _history.RecordConnect(stored.Name, source);
+                    string? endpoint = null;
+                    try
+                    {
+                        var plain = DecryptConfig(stored);
+                        endpoint = Cli.WireGuardConf.ExtractPrimaryEndpoint(plain ?? "");
+                    }
+                    catch { /* best effort */ }
+                    _history.RecordConnect(stored.Name, source, endpoint);
                     RunScript(stored.PostConnectScript, "post-connect", stored.Name);
                 }
 
