@@ -16,7 +16,7 @@ namespace MasselGUARD.Agent
 
             var log           = new LogService();
             var history       = new HistoryService();
-            var scripts       = new ScriptService(log);
+            var scripts       = new ScriptService();
             var config        = new ConfigService();
             var tunnels       = new TunnelService(log, scripts, history, killSwitch: null);
             var wifi          = new WiFiService();

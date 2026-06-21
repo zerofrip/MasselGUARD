@@ -9,6 +9,7 @@ using MasselGUARD.Agent.Events;
 using MasselGUARD.Agent.Ipc;
 using MasselGUARD.Agent.Services;
 using MasselGUARD.Agent.Release;
+using MasselGUARD.Release;
 using MasselGUARD.Cli;
 using MasselGUARD.Models;
 using MasselGUARD.Services;
@@ -635,11 +636,11 @@ namespace MasselGUARD.Agent
                 var node = System.Text.Json.Nodes.JsonNode.Parse(doc.RootElement.GetRawText())!.AsObject();
                 foreach (var prop in patch.EnumerateObject())
                     node[prop.Name] = System.Text.Json.Nodes.JsonNode.Parse(prop.Value.GetRawText());
-                _config.Config = node.Deserialize<AppConfig>() ?? _config.Config;
+                _config.ReplaceConfig(node.Deserialize<AppConfig>() ?? _config.Config);
             }
             else
             {
-                _config.Config = JsonSerializer.Deserialize<AppConfig>(p.GetRawText()) ?? _config.Config;
+                _config.ReplaceConfig(JsonSerializer.Deserialize<AppConfig>(p.GetRawText()) ?? _config.Config);
             }
             _config.Save();
             if (p.TryGetProperty("patch", out var patchEl) &&

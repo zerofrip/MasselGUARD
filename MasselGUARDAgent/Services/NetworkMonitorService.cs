@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Net.NetworkInformation;
 using MasselGUARD.Agent.Events;
 
 namespace MasselGUARD.Agent.Services
@@ -20,8 +21,8 @@ namespace MasselGUARD.Agent.Services
         public void Start()
         {
             _available = System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
-            System.Net.NetworkChange.NetworkAddressChanged += OnNetworkChange;
-            System.Net.NetworkChange.NetworkAvailabilityChanged += OnAvailabilityChange;
+            NetworkChange.NetworkAddressChanged += OnNetworkChange;
+            NetworkChange.NetworkAvailabilityChanged += OnAvailabilityChange;
         }
 
         private void OnNetworkChange(object? sender, EventArgs e) =>
@@ -50,8 +51,8 @@ namespace MasselGUARD.Agent.Services
         public void Dispose()
         {
             _debounce?.Dispose();
-            System.Net.NetworkChange.NetworkAddressChanged -= OnNetworkChange;
-            System.Net.NetworkChange.NetworkAvailabilityChanged -= OnAvailabilityChange;
+            NetworkChange.NetworkAddressChanged -= OnNetworkChange;
+            NetworkChange.NetworkAvailabilityChanged -= OnAvailabilityChange;
         }
     }
 }
