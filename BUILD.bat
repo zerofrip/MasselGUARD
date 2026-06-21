@@ -13,6 +13,8 @@ if not defined CODENAME set CODENAME=Dangerous Donkey
 rem ── Opt out of .NET CLI telemetry ────────────────────────────────────────────
 set DOTNET_CLI_TELEMETRY_OPTOUT=1
 set DOTNET_NOLOGO=1
+if defined GITHUB_ACTIONS set SKIP_PAUSE=1
+if defined CI set SKIP_PAUSE=1
 
 set DIST=%~dp0dist
 set DEPS=%~dp0wireguard-deps
@@ -29,7 +31,7 @@ dotnet --version >nul 2>&1
 if errorlevel 1 (
     echo  ERROR: .NET SDK not found.
     echo  Install .NET 10 SDK from: https://dotnet.microsoft.com/download/dotnet/10.0
-    pause & exit /b 1
+    if not defined SKIP_PAUSE pause & exit /b 1
 )
 
 for /f "tokens=*" %%v in ('dotnet --version') do set DOTNET_VER=%%v
@@ -42,7 +44,7 @@ echo.
 echo  ERROR: .NET 10 SDK is required (detected: %DOTNET_VER%).
 echo  Download from: https://dotnet.microsoft.com/download/dotnet/10.0
 echo.
-pause & exit /b 1
+if not defined SKIP_PAUSE pause & exit /b 1
 
 :sdk_ok
 echo.
@@ -58,7 +60,7 @@ if exist "!DIST!\MasselGUARD.exe" (
         echo   Close MasselGUARD.exe before building,
         echo   then run BUILD.bat again.
         echo.
-        pause & exit /b 1
+        if not defined SKIP_PAUSE pause & exit /b 1
     )
     ren "!DIST!\MasselGUARD.exe.__chk" "MasselGUARD.exe" >nul 2>&1
 )
@@ -72,7 +74,7 @@ if exist "!DIST!\MasselGUARDcli.exe" (
         echo   Close MasselGUARDcli.exe before building,
         echo   then run BUILD.bat again.
         echo.
-        pause & exit /b 1
+        if not defined SKIP_PAUSE pause & exit /b 1
     )
     ren "!DIST!\MasselGUARDcli.exe.__chk" "MasselGUARDcli.exe" >nul 2>&1
 )
@@ -81,7 +83,7 @@ if exist "!DIST!\MasselGUARDAgent.exe" (
     ren "!DIST!\MasselGUARDAgent.exe" "MasselGUARDAgent.exe.__chk" >nul 2>&1
     if errorlevel 1 (
         echo  BUILD FAILED -- MasselGUARDAgent.exe IS STILL RUNNING
-        pause & exit /b 1
+        if not defined SKIP_PAUSE pause & exit /b 1
     )
     ren "!DIST!\MasselGUARDAgent.exe.__chk" "MasselGUARDAgent.exe" >nul 2>&1
 )
@@ -98,7 +100,7 @@ dotnet publish "%~dp0MasselGUARD.csproj" -c Release -o "!DIST!" ^
     -p:InformationalVersion=%VERSION%.%BUILD_NUM%
 if not exist "!DIST!\MasselGUARD.exe" (
     echo  BUILD FAILED -- WPF MasselGUARD.exe not produced
-    pause & exit /b 1
+    if not defined SKIP_PAUSE pause & exit /b 1
 )
 move /y "!DIST!\MasselGUARD.exe" "!DIST!\MasselGUARD-legacy.exe" >nul
 echo  OK  MasselGUARD-legacy.exe
@@ -116,7 +118,7 @@ dotnet publish "%~dp0MasselGUARDAgent\MasselGUARDAgent.csproj" -c Release -o "!D
     -p:InformationalVersion=%VERSION%.%BUILD_NUM%
 if not exist "!DIST!\MasselGUARDAgent.exe" (
     echo  BUILD FAILED -- MasselGUARDAgent.exe not produced
-    pause & exit /b 1
+    if not defined SKIP_PAUSE pause & exit /b 1
 )
 echo  OK  MasselGUARDAgent.exe
 echo.
@@ -137,7 +139,7 @@ if not exist "!DIST!\MasselGUARDcli.exe" (
     echo   BUILD FAILED -- MasselGUARDcli.exe not produced
     echo  ==========================================
     echo.
-    pause & exit /b 1
+    if not defined SKIP_PAUSE pause & exit /b 1
 )
 echo.
 echo  OK  MasselGUARDcli.exe
@@ -256,5 +258,5 @@ echo.
 echo   Target machine requires .NET 10 Desktop Runtime:
 echo   https://dotnet.microsoft.com/download/dotnet/10.0
 echo.
-pause
+if not defined SKIP_PAUSE pause
 exit /b 0

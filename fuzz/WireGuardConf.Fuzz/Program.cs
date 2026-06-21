@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 using MasselGUARD.Cli;
 using SharpFuzz;
@@ -16,7 +17,7 @@ internal static class Program
             var text = Encoding.UTF8.GetString(buf);
             try
             {
-                WireGuardConf.Parse(text);
+                global::MasselGUARD.Cli.WireGuardConf.Parse(text);
             }
             catch
             {
@@ -25,7 +26,7 @@ internal static class Program
 
             try
             {
-                WireGuardConf.Validate(text);
+                global::MasselGUARD.Cli.WireGuardConf.Validate(text);
             }
             catch
             {

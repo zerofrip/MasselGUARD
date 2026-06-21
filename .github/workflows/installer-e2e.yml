@@ -1,17 +1,13 @@
 name: Installer E2E
 
+# Requires a self-hosted runner with labels: [self-hosted, windows, vm].
+# Re-enable pull_request trigger once that runner is provisioned.
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'installer/**'
-      - 'dist/**'
-      - 'tests/scripts/installer_matrix.ps1'
 
 jobs:
   installer-matrix:
     runs-on: [self-hosted, windows, vm]
-    if: github.event_name == 'workflow_dispatch' || github.repository != ''
     steps:
       - uses: actions/checkout@v4
 

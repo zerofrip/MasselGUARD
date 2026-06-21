@@ -57,7 +57,10 @@ namespace MasselGUARD.Agent.Events
 
         public void Flush(ulong lastSeq)
         {
-            lock (_lock) => FlushInternal(lastSeq);
+            lock (_lock)
+            {
+                FlushInternal(lastSeq);
+            }
         }
 
         private void FlushInternal(ulong lastSeq)

@@ -169,6 +169,13 @@ namespace MasselGUARD.Services
         }
 
         // ── Save ─────────────────────────────────────────────────────────────
+        /// <summary>Replace in-memory config (e.g. from Agent RPC config.set).</summary>
+        public void ReplaceConfig(AppConfig config)
+        {
+            Config = config;
+            ConfigChanged?.Invoke();
+        }
+
         public void Save()
         {
             var dir = Path.GetDirectoryName(ConfigPath)!;

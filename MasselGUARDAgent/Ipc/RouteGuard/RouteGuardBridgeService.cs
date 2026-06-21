@@ -36,7 +36,6 @@ namespace MasselGUARD.Agent.Ipc.RouteGuard
         private bool _lastDomainEffective;
         private bool _lastKernelRedirect;
         private bool _lastDriverPresent;
-        private ulong _lastEventId;
         private int? _lastHealthScore;
         private JsonElement? _lastRedirectStats;
         private JsonElement? _lastObservability;

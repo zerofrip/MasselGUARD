@@ -13,7 +13,7 @@ namespace MasselGUARD.Models
 
     public static class NetworkLockModeExtensions
     {
-        public static string ToApiString(NetworkLockMode mode) =>
+        public static string ToApiString(this NetworkLockMode mode) =>
             mode switch
             {
                 NetworkLockMode.Auto      => "auto",

@@ -11,6 +11,5 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\MasselGUARDAgent\Release\SupportBundleRedactor.cs" Link="SupportBundleRedactor.cs" />
-    <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>

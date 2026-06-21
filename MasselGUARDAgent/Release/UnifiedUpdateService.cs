@@ -5,6 +5,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -53,7 +55,7 @@ namespace MasselGUARD.Release
             try
             {
                 var sig = Convert.FromBase64String(manifest.ManifestSignature);
-                return System.Security.Cryptography.Ed25519.Verify(sig, payload, key);
+                return VerifyEd25519(sig, payload, key);
             }
             catch
             {
@@ -205,6 +207,15 @@ namespace MasselGUARD.Release
                 ManifestSignature = null,
             };
             return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(clone, JsonOpts));
+        }
+
+        private static bool VerifyEd25519(byte[] signature, byte[] message, byte[] publicKey)
+        {
+            if (signature.Length != 64 || publicKey.Length != 32) return false;
+            var verifier = new Ed25519Signer();
+            verifier.Init(false, new Ed25519PublicKeyParameters(publicKey, 0));
+            verifier.BlockUpdate(message, 0, message.Length);
+            return verifier.VerifySignature(signature);
         }
 
         private static readonly JsonSerializerOptions JsonOpts = new()

@@ -43,6 +43,8 @@ jobs:
 
       - name: Build MasselGUARD
         shell: cmd
+        env:
+          GITHUB_ACTIONS: true
         run: BUILD.bat
 
       - name: Build RouteGuard
@@ -66,7 +68,6 @@ jobs:
           ./scripts/generate-release-manifest.ps1 -Channel $ch -DistDir dist -RouteGuardDir RouteGuard/target/release
 
       - name: Sign binaries (EV)
-        if: ${{ secrets.EV_CERT_PFX != '' }}
         shell: pwsh
         env:
           EV_CERT_PFX: ${{ secrets.EV_CERT_PFX }}

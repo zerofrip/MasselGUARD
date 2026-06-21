@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -12,7 +13,11 @@ namespace MasselGUARD.Agent.Release
     /// <summary>JSON redaction rules per support bundle tier.</summary>
     public static class SupportBundleRedactor
     {
-        private static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true };
+        private static readonly JsonSerializerOptions Pretty = new()
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
 
         public static string RedactJson(string json, string tier)
         {

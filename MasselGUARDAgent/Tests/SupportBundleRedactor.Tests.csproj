@@ -12,6 +12,5 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Release\SupportBundleRedactor.cs" Link="SupportBundleRedactor.cs" />
-    <Compile Include="SupportBundleRedactorTests.cs" />
   </ItemGroup>
 </Project>
