@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Read version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = & ./scripts/read-version.ps1 -Property masselguard.version
+          if (-not $v) { $v = "3.6.0" }
+          echo "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Publish MasselGUARDAgent
+        run: >
+          dotnet publish MasselGUARDAgent/MasselGUARDAgent.csproj
+          -c Release -o dist
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:AssemblyVersion=${{ steps.ver.outputs.version }}.0
+          -p:FileVersion=${{ steps.ver.outputs.version }}.0
+          -p:InformationalVersion=${{ steps.ver.outputs.version }}
+
+      - name: Publish MasselGUARDcli
+        run: >
+          dotnet publish MasselGUARDcli/MasselGUARDcli.csproj
+          -c Release -o dist
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:AssemblyVersion=${{ steps.ver.outputs.version }}.0
+          -p:FileVersion=${{ steps.ver.outputs.version }}.0
+          -p:InformationalVersion=${{ steps.ver.outputs.version }}
+
+      - name: Publish MasselGUARD (WPF legacy)
+        run: >
+          dotnet publish MasselGUARD.csproj
+          -c Release -o dist
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:AssemblyVersion=${{ steps.ver.outputs.version }}.0
+          -p:FileVersion=${{ steps.ver.outputs.version }}.0
+          -p:InformationalVersion=${{ steps.ver.outputs.version }}
+
+      - name: Stage dist assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Copy-Item wireguard-deps/*.dll dist/ -ErrorAction SilentlyContinue
+          Copy-Item -Recurse lang dist/lang
+
+      - name: Validate lang key parity
+        shell: pwsh
+        run: ./scripts/validate-lang-keys.ps1
+
+      - name: CLI smoke test
+        shell: pwsh
+        run: |
+          ./dist/MasselGUARDcli.exe --version
+          ./dist/MasselGUARDcli.exe --help
+
+      - name: Agent unit tests
+        run: dotnet test MasselGUARDAgent/Tests/SupportBundleRedactor.Tests.csproj -c Release
+
+      - name: Build fuzz harnesses
+        run: |
+          dotnet build fuzz/WireGuardConf.Fuzz/WireGuardConf.Fuzz.csproj -c Release
+          dotnet build fuzz/AgentIpc.Fuzz/AgentIpc.Fuzz.csproj -c Release
+          dotnet build fuzz/SupportRedactor.Fuzz/SupportRedactor.Fuzz.csproj -c Release

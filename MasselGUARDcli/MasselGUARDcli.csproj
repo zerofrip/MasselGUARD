@@ -36,12 +36,7 @@
     <Compile Include="..\Lang.cs" />
     <Compile Include="..\Models\*.cs" />
     <Compile Include="..\Infrastructure\*.cs" />
-    <Compile Include="..\Services\ConfigService.cs" />
-    <Compile Include="..\Services\HistoryService.cs" />
-    <Compile Include="..\Services\KillSwitchService.cs" />
-    <Compile Include="..\Services\LogService.cs" />
-    <Compile Include="..\Services\ScriptService.cs" />
-    <Compile Include="..\Services\TunnelService.cs" />
+    <Compile Include="..\Services\*.cs" />
     <Compile Include="..\Cli\CliOutput.cs" />
     <Compile Include="..\Cli\CliRunner.cs" />
     <Compile Include="..\Cli\WireGuardConf.cs" />
