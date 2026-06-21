@@ -4,9 +4,11 @@ setlocal enabledelayedexpansion
 
 rem ── Build number: YYMMDDHHMM ────────────────────────────────────────────────
 for /f %%a in ('powershell -NoProfile -Command "Get-Date -Format yyMMddHHmm"') do set BUILD_NUM=%%a
-set VERSION=3.6.0
-rem Update CODENAME here AND in UpdateChecker.cs when bumping VERSION.
-set CODENAME=Dangerous Donkey
+rem ── Version from version.json (run scripts/sync-version.ps1 after bump) ───
+for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\read-version.ps1" -Property masselguard.version') do set VERSION=%%v
+for /f "delims=" %%c in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\read-version.ps1" -Property masselguard.codename') do set CODENAME=%%c
+if not defined VERSION set VERSION=3.6.0
+if not defined CODENAME set CODENAME=Dangerous Donkey
 
 rem ── Opt out of .NET CLI telemetry ────────────────────────────────────────────
 set DOTNET_CLI_TELEMETRY_OPTOUT=1
@@ -75,9 +77,18 @@ if exist "!DIST!\MasselGUARDcli.exe" (
     ren "!DIST!\MasselGUARDcli.exe.__chk" "MasselGUARDcli.exe" >nul 2>&1
 )
 
-rem ── Step 2b: compile MasselGUARD (GUI) ───────────────────────────────────────
+if exist "!DIST!\MasselGUARDAgent.exe" (
+    ren "!DIST!\MasselGUARDAgent.exe" "MasselGUARDAgent.exe.__chk" >nul 2>&1
+    if errorlevel 1 (
+        echo  BUILD FAILED -- MasselGUARDAgent.exe IS STILL RUNNING
+        pause & exit /b 1
+    )
+    ren "!DIST!\MasselGUARDAgent.exe.__chk" "MasselGUARDAgent.exe" >nul 2>&1
+)
+
+rem ── Step 2b: compile legacy WPF GUI (renamed after publish) ─────────────────
 echo  -------------------------------------------------------
-echo   Compiling MasselGUARD (GUI)...
+echo   Compiling MasselGUARD-legacy (WPF)...
 echo  -------------------------------------------------------
 echo.
 dotnet publish "%~dp0MasselGUARD.csproj" -c Release -o "!DIST!" ^
@@ -86,18 +97,31 @@ dotnet publish "%~dp0MasselGUARD.csproj" -c Release -o "!DIST!" ^
     -p:FileVersion=%VERSION%.0 ^
     -p:InformationalVersion=%VERSION%.%BUILD_NUM%
 if not exist "!DIST!\MasselGUARD.exe" (
-    echo.
-    echo  ==========================================
-    echo   BUILD FAILED -- MasselGUARD.exe not produced
-    echo  ==========================================
-    echo.
+    echo  BUILD FAILED -- WPF MasselGUARD.exe not produced
     pause & exit /b 1
 )
-echo.
-echo  OK  MasselGUARD.exe
+move /y "!DIST!\MasselGUARD.exe" "!DIST!\MasselGUARD-legacy.exe" >nul
+echo  OK  MasselGUARD-legacy.exe
 echo.
 
-rem ── Step 2c: compile MasselGUARDcli (CLI) ────────────────────────────────────
+rem ── Step 2c: compile MasselGUARDAgent ────────────────────────────────────────
+echo  -------------------------------------------------------
+echo   Compiling MasselGUARDAgent...
+echo  -------------------------------------------------------
+echo.
+dotnet publish "%~dp0MasselGUARDAgent\MasselGUARDAgent.csproj" -c Release -o "!DIST!" ^
+    -p:Version=%VERSION% ^
+    -p:AssemblyVersion=%VERSION%.0 ^
+    -p:FileVersion=%VERSION%.0 ^
+    -p:InformationalVersion=%VERSION%.%BUILD_NUM%
+if not exist "!DIST!\MasselGUARDAgent.exe" (
+    echo  BUILD FAILED -- MasselGUARDAgent.exe not produced
+    pause & exit /b 1
+)
+echo  OK  MasselGUARDAgent.exe
+echo.
+
+rem ── Step 2d: compile MasselGUARDcli (CLI) ────────────────────────────────────
 echo  -------------------------------------------------------
 echo   Compiling MasselGUARDcli (CLI)...
 echo  -------------------------------------------------------
@@ -117,6 +141,39 @@ if not exist "!DIST!\MasselGUARDcli.exe" (
 )
 echo.
 echo  OK  MasselGUARDcli.exe
+echo.
+
+rem ── Step 2e: build Tauri GUI (optional — requires Node.js + Rust) ────────────
+set TAURI_OK=0
+where npm >nul 2>&1
+if not errorlevel 1 (
+    where cargo >nul 2>&1
+    if not errorlevel 1 (
+        echo  -------------------------------------------------------
+        echo   Building MasselGUARD Tauri GUI...
+        echo  -------------------------------------------------------
+        pushd "%~dp0masselguard-ui"
+        call npm install
+        if not errorlevel 1 (
+            call npm run tauri build
+            if not errorlevel 1 set TAURI_OK=1
+        )
+        popd
+    )
+)
+
+if "!TAURI_OK!"=="1" (
+    if exist "%~dp0masselguard-ui\src-tauri\target\release\masselguard-ui.exe" (
+        copy /y "%~dp0masselguard-ui\src-tauri\target\release\masselguard-ui.exe" "!DIST!\MasselGUARD.exe" >nul
+        echo  OK  MasselGUARD.exe  (Tauri GUI)
+    ) else (
+        echo  WARNING: Tauri build succeeded but release exe not found.
+        echo           Check masselguard-ui\src-tauri\target\release\bundle\
+    )
+) else (
+    echo  WARNING: Tauri GUI not built — dist\MasselGUARD.exe missing.
+    echo           Use MasselGUARD-legacy.exe or install Node.js + Rust and re-run BUILD.bat
+)
 echo.
 
 rem ── Step 3a: copy install helper ─────────────────────────────────────────────
@@ -177,7 +234,9 @@ echo  ==========================================
 echo   BUILD SUCCESSFUL
 echo  ==========================================
 echo.
-echo   dist\MasselGUARD.exe        (GUI application)
+echo   dist\MasselGUARDAgent.exe   (JSON-RPC backend for Tauri GUI)
+echo   dist\MasselGUARD.exe        (Tauri GUI — primary)
+echo   dist\MasselGUARD-legacy.exe (WPF GUI — deprecated)
 echo   dist\MasselGUARDcli.exe     (command-line interface)
 echo   dist\install-dotnet.bat     (.NET 10 install helper)
 echo   dist\lang\
