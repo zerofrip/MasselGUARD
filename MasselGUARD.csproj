@@ -53,6 +53,15 @@
     <Content Remove="deps\**" />
     <EmbeddedResource Remove="deps\**" />
     <None Remove="deps\**" />
+    <Compile Remove="MasselGUARDAgent\**" />
+    <Compile Remove="MasselGUARDcli\**" />
+    <Compile Remove="fuzz\**" />
+    <Compile Remove="tests\**" />
+    <Compile Remove="tools\**" />
+    <Compile Remove="masselguard-ui\**" />
+    <Compile Remove="installer\**" />
+    <Compile Remove="Cli\CliRunner.cs" />
+    <Compile Remove="Cli\CliOutput.cs" />
   </ItemGroup>
 
   <ItemGroup>
