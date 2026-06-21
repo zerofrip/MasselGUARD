@@ -1,0 +1,12 @@
+{
+  "endpoint": "203.0.113.1:51820",
+  "remoteIp": "203.0.113.1",
+  "publicIp": "198.51.100.42",
+  "appPath": "C:\\Program Files\\Example\\app.exe",
+  "machineName": "DESKTOP-ABC123",
+  "ssid": "HomeWiFi",
+  "privateKey": "abc123secret",
+  "nested": {
+    "endpointIp": "10.0.0.5"
+  }
+}
