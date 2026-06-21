@@ -12,6 +12,5 @@
   <ItemGroup>
     <Compile Include="..\..\Cli\WireGuardConf.cs" Link="WireGuardConf.cs" />
     <Compile Include="..\..\Models\WireGuardProfile.cs" Link="WireGuardProfile.cs" />
-    <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>
