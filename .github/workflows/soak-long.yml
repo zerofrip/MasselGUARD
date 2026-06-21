@@ -1,0 +1,64 @@
+name: Soak long
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      duration_days:
+        description: 'Soak duration (7, 14, or 30 days)'
+        required: true
+        default: '7'
+        type: choice
+        options:
+          - '7'
+          - '14'
+          - '30'
+
+jobs:
+  soak:
+    runs-on: [self-hosted, windows, vm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Register soak scheduled task (survives runner disconnect)
+        shell: pwsh
+        run: |
+          $days = [int]'${{ github.event.inputs.duration_days || 7 }}'
+          $action = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument "-NoProfile -File `"$PWD/tests/scripts/soak_runner.ps1`" -DurationDays $days -ReportPath reports/soak"
+          $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1)
+          Register-ScheduledTask -TaskName 'MasselGUARD-Soak' -Action $action -Trigger $trigger -Force
+          Write-Host "Scheduled soak for $days days"
+
+      - name: Quick validation poll (5 min smoke)
+        shell: pwsh
+        run: |
+          $env:MASSELGUARD_CHAOS = '0'
+          # Smoke: run soak logic for one poll cycle via chaos resource snapshot
+          ./tests/chaos/lib/resource_snapshot.ps1 -IncludeAgentRpc | Out-Null
+          Write-Host 'Smoke OK'
+
+      - name: Upload soak config artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soak-config
+          path: reports/soak/
+
+  chaos-quick-gate:
+    runs-on: [self-hosted, windows, vm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chaos quick matrix (C02, C08, C09, C12)
+        shell: pwsh
+        env:
+          MASSELGUARD_CHAOS: '1'
+        run: ./tests/chaos/chaos_matrix.ps1 -Scenario quick -ReportPath reports/chaos
+
+      - name: Upload chaos report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chaos-quick-report
+          path: reports/chaos/

@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        required: true
+        default: beta
+        type: choice
+        options:
+          - nightly
+          - beta
+          - stable
+
+jobs:
+  build-masselguard:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Checkout RouteGuard
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/RouteGuard
+          path: RouteGuard
+
+      - name: Build MasselGUARD
+        shell: cmd
+        run: BUILD.bat
+
+      - name: Build RouteGuard
+        working-directory: RouteGuard
+        run: cargo build --release -p routeguard-service -p routeguard-cli
+
+      - name: Stage RouteGuard into dist
+        shell: pwsh
+        run: |
+          $rg = "RouteGuard/target/release"
+          $dest = "dist/RouteGuard"
+          New-Item -ItemType Directory -Path $dest -Force
+          Copy-Item "$rg/routeguard-service.exe" $dest
+          Copy-Item "$rg/routeguard-cli.exe" $dest
+          if (Test-Path "wireguard-deps/wireguard.dll") { Copy-Item wireguard-deps/wireguard.dll $dest }
+
+      - name: Generate manifest
+        shell: pwsh
+        run: |
+          $ch = "${{ github.event.inputs.channel || 'beta' }}"
+          ./scripts/generate-release-manifest.ps1 -Channel $ch -DistDir dist -RouteGuardDir RouteGuard/target/release
+
+      - name: Sign binaries (EV)
+        if: ${{ secrets.EV_CERT_PFX != '' }}
+        shell: pwsh
+        env:
+          EV_CERT_PFX: ${{ secrets.EV_CERT_PFX }}
+          EV_CERT_PASSWORD: ${{ secrets.EV_CERT_PASSWORD }}
+        run: |
+          if (-not $env:EV_CERT_PFX) { Write-Host "Skipping sign — no certificate"; exit 0 }
+          $pfx = "$env:RUNNER_TEMP\ev.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:EV_CERT_PFX))
+          Get-ChildItem dist -Recurse -Include *.exe,*.dll | ForEach-Object {
+            signtool sign /fd SHA256 /tr http://timestamp.digicert.com /f $pfx /p $env:EV_CERT_PASSWORD $_.FullName
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ch = "${{ github.event.inputs.channel || 'beta' }}"
+          if (Get-Command wix -ErrorAction SilentlyContinue) {
+            ./installer/build-installer.ps1 -Channel $ch -RouteGuardDir RouteGuard/target/release
+          } else {
+            Write-Host "WiX not installed — skipping MSI (upload dist/ only)"
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: masselguard-${{ github.event.inputs.channel || 'beta' }}-win-x64
+          path: |
+            dist/
+            dist/installer/
+
+  driver-attestation:
+    runs-on: windows-latest
+    if: ${{ github.event.inputs.channel == 'beta' || github.event.inputs.channel == 'stable' || startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/RouteGuard
+          path: RouteGuard
+
+      - name: Driver attestation reminder
+        shell: pwsh
+        run: |
+          Write-Host "Upload routeguard-callout.sys to Microsoft Partner Center Hardware Dashboard"
+          Write-Host "See RouteGuard/drivers/routeguard-callout/SIGNING.md"
+          if (Test-Path RouteGuard/drivers/routeguard-callout/routeguard-callout.sys) {
+            Write-Host "Driver binary present in tree"
+          }

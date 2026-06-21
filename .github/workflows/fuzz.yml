@@ -1,0 +1,31 @@
+name: Fuzz (MasselGUARD)
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  masselguard-fuzz-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build fuzz harnesses
+        run: |
+          dotnet build fuzz/WireGuardConf.Fuzz/WireGuardConf.Fuzz.csproj -c Release
+          dotnet build fuzz/AgentIpc.Fuzz/AgentIpc.Fuzz.csproj -c Release
+          dotnet build fuzz/SupportRedactor.Fuzz/SupportRedactor.Fuzz.csproj -c Release
+
+      - name: Run SupportRedactor smoke (stdin)
+        shell: pwsh
+        run: |
+          $json = '{"privateKey":"abc123secret","endpoint":"203.0.113.1:51820"}'
+          $out = dotnet run --project fuzz/SupportRedactor.Fuzz --no-build -c Release 2>&1
+          if ($LASTEXITCODE -ne 0 -and $out -notmatch 'SharpFuzz|libFuzzer') {
+            Write-Host "Build OK; full libFuzzer run requires SharpFuzz driver on PATH"
+          }

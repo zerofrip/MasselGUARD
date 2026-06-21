@@ -1,0 +1,28 @@
+name: Installer E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'installer/**'
+      - 'dist/**'
+      - 'tests/scripts/installer_matrix.ps1'
+
+jobs:
+  installer-matrix:
+    runs-on: [self-hosted, windows, vm]
+    if: github.event_name == 'workflow_dispatch' || github.repository != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run installer matrix
+        shell: pwsh
+        run: |
+          ./tests/scripts/installer_matrix.ps1 -Scenario all -ReportPath reports/installer-e2e
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-e2e-report
+          path: reports/installer-e2e/

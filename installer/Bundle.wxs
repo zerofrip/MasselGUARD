@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+  <?include Version.wxi ?>
+
+  <Bundle Name="MasselGUARD Setup"
+          Version="$(var.ProductVersion)"
+          Manufacturer="Harold Masselink"
+          UpgradeCode="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication LicenseUrl="" Theme="hyperlinkSidebarLicense" />
+    </BootstrapperApplication>
+
+    <Chain>
+      <!-- .NET 10 Desktop Runtime prerequisite — URL updated at build time -->
+      <ExePackage Id="DotNetDesktop10"
+                  DisplayName=".NET 10 Desktop Runtime"
+                  SourceFile="$(var.PrereqDir)\dotnet-desktop-runtime-10-win-x64.exe"
+                  InstallArguments="/install /quiet /norestart"
+                  DetectCondition="DotNet10DesktopInstalled"
+                  Permanent="yes"
+                  Vital="yes" />
+
+      <MsiPackage Id="MasselGUARDMsi"
+                  SourceFile="$(var.OutputDir)\MasselGUARD-$(var.ProductVersion)-x64.msi"
+                  Vital="yes" />
+    </Chain>
+
+    <Variable Name="DotNet10DesktopInstalled" Type="numeric" Value="0" />
+  </Bundle>
+</Wix>

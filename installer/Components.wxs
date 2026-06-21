@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <?include Version.wxi ?>
+
+  <Fragment>
+    <ComponentGroup Id="MasselGUARDCoreComponents" Directory="INSTALLDIR">
+      <Component Id="MasselGUARDExe" Guid="*">
+        <File Id="MasselGUARDExeFile" Source="$(var.DistDir)\MasselGUARD.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="MasselGUARDAgentExe" Guid="*">
+        <File Id="MasselGUARDAgentExeFile" Source="$(var.DistDir)\MasselGUARDAgent.exe" KeyPath="yes" />
+        <ServiceInstall Id="MasselGUARDAgentService"
+                        Name="MasselGUARDAgent"
+                        DisplayName="MasselGUARD Agent"
+                        Description="MasselGUARD background agent for tunnel and RouteGuard orchestration"
+                        Type="ownProcess"
+                        Start="auto"
+                        Account="LocalSystem"
+                        ErrorControl="normal" />
+        <ServiceControl Id="MasselGUARDAgentServiceControl"
+                        Name="MasselGUARDAgent"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall" />
+      </Component>
+      <Component Id="MasselGUARDCliExe" Guid="*">
+        <File Id="MasselGUARDCliExeFile" Source="$(var.DistDir)\MasselGUARDcli.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="RouteGuardCoreComponents" Directory="ROUTEGUARDDIR">
+      <Component Id="RouteGuardServiceExe" Guid="*">
+        <File Id="RouteGuardServiceExeFile" Source="$(var.RouteGuardDir)\routeguard-service.exe" KeyPath="yes" />
+        <ServiceInstall Id="RouteGuardService"
+                        Name="RouteGuard"
+                        DisplayName="RouteGuard VPN Service"
+                        Description="RouteGuard split tunnel, routing, and network lock service"
+                        Type="ownProcess"
+                        Start="auto"
+                        Account="LocalSystem"
+                        ErrorControl="normal"
+                        Arguments="--service" />
+        <ServiceControl Id="RouteGuardServiceControl"
+                        Name="RouteGuard"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall" />
+      </Component>
+      <Component Id="RouteGuardCliExe" Guid="*">
+        <File Id="RouteGuardCliExeFile" Source="$(var.RouteGuardDir)\routeguard-cli.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="WireGuardDll" Guid="*">
+        <File Id="WireGuardDllFile" Source="$(var.RouteGuardDir)\wireguard.dll" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="AwgComponents" Directory="ROUTEGUARDDIR">
+      <Component Id="TunnelDll" Guid="*">
+        <File Id="TunnelDllFile" Source="$(var.RouteGuardDir)\tunnel.dll" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="PhantunComponents" Directory="ROUTEGUARDDIR">
+      <Component Id="PhantunClientExe" Guid="*">
+        <File Id="PhantunClientExeFile" Source="$(var.RouteGuardDir)\phantun_client.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="InstallerCustomActions" Directory="CUSTOMACTIONSDIR">
+      <Component Id="CaBackupInstall" Guid="*">
+        <File Id="CaBackupInstallFile" Source="$(var.InstallerSourceDir)\custom-actions\Backup-Install.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="CaInstallDriver" Guid="*">
+        <File Id="CaInstallDriverFile" Source="$(var.InstallerSourceDir)\custom-actions\Install-Driver.ps1" />
+      </Component>
+      <Component Id="CaUninstallDriver" Guid="*">
+        <File Id="CaUninstallDriverFile" Source="$(var.InstallerSourceDir)\custom-actions\Uninstall-Driver.ps1" />
+      </Component>
+      <Component Id="CaRollbackInstall" Guid="*">
+        <File Id="CaRollbackInstallFile" Source="$(var.InstallerSourceDir)\custom-actions\Rollback-Install.ps1" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

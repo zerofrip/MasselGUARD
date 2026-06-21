@@ -1,0 +1,23 @@
+name: Telemetry ETL
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Aggregate sample (empty store smoke)
+        run: |
+          mkdir -p telemetry-data reports
+          python3 tools/telemetry-ingest/aggregate.py telemetry-data reports/reliability-summary.json
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: reliability-summary
+          path: reports/reliability-summary.json
