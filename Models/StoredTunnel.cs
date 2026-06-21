@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace MasselGUARD.Models
@@ -40,5 +42,15 @@ namespace MasselGUARD.Models
         /// the validator does not yet understand.
         /// </summary>
         public bool SkipValidation  { get; set; } = false;
+
+        // ── Profile library (Phase 3) ────────────────────────────────────────
+        public ProfileSource ProfileSource { get; set; } = ProfileSource.Local;
+        public bool Favorite { get; set; } = false;
+        public List<string> Tags { get; set; } = new();
+        public bool Archived { get; set; } = false;
+        public DateTime? LastUsedAt { get; set; }
+        public int ConnectionCount { get; set; } = 0;
+        public string? EndpointSummary { get; set; }
+        public DateTime? ImportedAt { get; set; }
     }
 }

@@ -1,0 +1,54 @@
+{
+  "profiles": {
+    "developer": {
+      "signing": "none",
+      "driver": "test-signed optional",
+      "updateChannel": null,
+      "telemetry": "off",
+      "pipeAcl": "open",
+      "verifySignatures": false,
+      "diagnosticsDefaultTier": "full",
+      "outputs": ["dist/"]
+    },
+    "nightly": {
+      "signing": "dev-authenticode",
+      "driver": "test-signed",
+      "updateChannel": "nightly",
+      "telemetry": "off",
+      "pipeAcl": "default",
+      "verifySignatures": false,
+      "diagnosticsDefaultTier": "support",
+      "outputs": ["MasselGUARD-*-nightly-x64.msi", "manifest-nightly.json"]
+    },
+    "beta": {
+      "signing": "ev-authenticode",
+      "driver": "ev-attestation",
+      "updateChannel": "beta",
+      "telemetry": "opt-in-metrics",
+      "telemetryCrash": "opt-in-crash",
+      "pipeAcl": "default",
+      "verifySignatures": true,
+      "diagnosticsDefaultTier": "sanitized",
+      "outputs": [
+        "MasselGUARD-*-beta-x64.msi",
+        "MasselGUARD-*-beta-x64-setup.exe",
+        "manifest-beta.json"
+      ]
+    },
+    "stable": {
+      "signing": "ev-authenticode",
+      "driver": "ev-attestation-hlk",
+      "updateChannel": "stable",
+      "telemetry": "opt-in-metrics",
+      "telemetryCrash": "opt-in-crash",
+      "pipeAcl": "strict",
+      "verifySignatures": true,
+      "diagnosticsDefaultTier": "sanitized",
+      "outputs": [
+        "MasselGUARD-*-stable-x64.msi",
+        "MasselGUARD-*-stable-x64-setup.exe",
+        "manifest-stable.json"
+      ]
+    }
+  }
+}

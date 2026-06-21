@@ -1,0 +1,137 @@
+:root {
+  --mg-bg: #0f1117;
+  --mg-surface: #1a1d27;
+  --mg-surface-hover: #222633;
+  --mg-border: #2d3348;
+  --mg-text: #e8eaef;
+  --mg-text-muted: #8b93a7;
+  --mg-accent: #6c8cff;
+  --mg-accent-hover: #5578ff;
+  --mg-success: #3dd68c;
+  --mg-warning: #f5a524;
+  --mg-danger: #f31260;
+  --mg-radius: 10px;
+  --mg-sidebar-w: 220px;
+}
+
+[data-theme='light'] {
+  --mg-bg: #f4f5f8;
+  --mg-surface: #ffffff;
+  --mg-surface-hover: #eef0f6;
+  --mg-border: #d8dce8;
+  --mg-text: #141824;
+  --mg-text-muted: #5c6478;
+  --mg-accent: #3b5bdb;
+  --mg-accent-hover: #2f4bc4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--mg-bg);
+  color: var(--mg-text);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  background: var(--mg-bg);
+  color: var(--mg-text);
+  border: 1px solid var(--mg-border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+.card {
+  background: var(--mg-surface);
+  border: 1px solid var(--mg-border);
+  border-radius: var(--mg-radius);
+  padding: 1rem 1.25rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: none;
+  border-radius: 8px;
+  padding: 0.55rem 1rem;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.btn-primary {
+  background: var(--mg-accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--mg-accent-hover);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--mg-text);
+  border: 1px solid var(--mg-border);
+}
+
+.btn-ghost:hover {
+  background: var(--mg-surface-hover);
+}
+
+.btn-danger {
+  background: var(--mg-danger);
+  color: white;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-success {
+  background: color-mix(in srgb, var(--mg-success) 20%, transparent);
+  color: var(--mg-success);
+}
+
+.badge-muted {
+  background: var(--mg-surface-hover);
+  color: var(--mg-text-muted);
+}
+
+.badge-warning {
+  background: color-mix(in srgb, var(--mg-warning) 20%, transparent);
+  color: var(--mg-warning);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.stat-item label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--mg-text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.stat-item strong {
+  font-size: 1.05rem;
+}

@@ -1,0 +1,3 @@
+# Placeholder for Ed25519 manifest verification public key (32 bytes, base64).
+# Generate with: openssl genpkey -algorithm ed25519 -out manifest-key.pem
+# Extract pubkey and base64-encode for MASSELGUARD_MANIFEST_PUBKEY_B64 or MASSELGUARD_EMBEDDED_MANIFEST_PUBKEY_B64

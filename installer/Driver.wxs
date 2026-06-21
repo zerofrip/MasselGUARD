@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <?include Version.wxi ?>
+
+  <Fragment>
+    <ComponentGroup Id="DriverComponents" Directory="DRIVERDIR">
+      <Component Id="CalloutSys" Guid="*">
+        <File Id="CalloutSysFile" Source="$(var.RouteGuardDir)\drivers\routeguard-callout.sys" KeyPath="yes" />
+      </Component>
+      <Component Id="CalloutInf" Guid="*">
+        <File Id="CalloutInfFile" Source="$(var.RouteGuardDir)\drivers\routeguard-callout.inf" />
+      </Component>
+      <Component Id="CalloutCat" Guid="*">
+        <File Id="CalloutCatFile" Source="$(var.RouteGuardDir)\drivers\routeguard-callout.cat" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Deferred custom actions — run elevated, no impersonation -->
+    <CustomAction Id="BackupInstallSnapshot"
+                  Directory="DRIVERDIR"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLDIR]installer\custom-actions\Backup-Install.ps1&quot; -InstallDir &quot;[INSTALLDIR]&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <CustomAction Id="InstallCalloutDriver"
+                  Directory="DRIVERDIR"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLDIR]installer\custom-actions\Install-Driver.ps1&quot; -InfPath &quot;[DRIVERDIR]routeguard-callout.inf&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <CustomAction Id="UninstallCalloutDriver"
+                  Directory="DRIVERDIR"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLDIR]installer\custom-actions\Uninstall-Driver.ps1&quot; -InfName routeguard-callout.inf"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <CustomAction Id="RollbackInstall"
+                  Directory="DRIVERDIR"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLDIR]installer\custom-actions\Rollback-Install.ps1&quot; -InstallDir &quot;[INSTALLDIR]&quot;"
+                  Execute="rollback"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <Property Id="REBOOT_REQUIRED" Value="0" />
+  </Fragment>
+</Wix>

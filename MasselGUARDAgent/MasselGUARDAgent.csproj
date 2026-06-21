@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>MasselGUARDAgent</AssemblyName>
+    <RootNamespace>MasselGUARD.Agent</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <StartupObject>MasselGUARD.Agent.Program</StartupObject>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <Version>3.6.0</Version>
+    <AssemblyVersion>3.6.0.0</AssemblyVersion>
+    <FileVersion>3.6.0.0</FileVersion>
+    <InformationalVersion>3.6.0</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\TunnelDll.cs" />
+    <Compile Include="..\UpdateChecker.cs" />
+    <Compile Include="..\Lang.cs" />
+    <Compile Include="..\Models\*.cs" />
+    <Compile Include="..\Infrastructure\*.cs" />
+    <Compile Include="..\Services\*.cs" />
+    <Compile Include="..\Cli\WireGuardConf.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="..\deps\**" />
+    <Content Remove="..\deps\**" />
+  </ItemGroup>
+</Project>

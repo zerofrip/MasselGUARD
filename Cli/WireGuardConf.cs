@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using MasselGUARD.Models;
 
 namespace MasselGUARD.Cli
 {
@@ -21,7 +23,7 @@ namespace MasselGUARD.Cli
     ///   AllowedIPs      = 0.0.0.0/0, ::/0
     ///   PersistentKeepalive = 25      (optional)
     /// </summary>
-    internal static class WireGuardConf
+    public static class WireGuardConf
     {
         // ── Known field → section mapping (case-insensitive key) ─────────────
         private static readonly HashSet<string> InterfaceFields =
@@ -442,5 +444,148 @@ namespace MasselGUARD.Cli
                 return candidate;
             return null;
         }
+
+        // ── Parse / structured build ─────────────────────────────────────────
+
+        /// <summary>Parses a WireGuard .conf into a structured profile (first-class sections).</summary>
+        public static WireGuardProfile Parse(string conf)
+        {
+            var profile = new WireGuardProfile();
+            if (string.IsNullOrWhiteSpace(conf)) return profile;
+
+            conf = conf.TrimStart('\uFEFF');
+            var lines   = conf.Split('\n');
+            string section = "";
+            WireGuardPeerSection? currentPeer = null;
+
+            foreach (var rawLine in lines)
+            {
+                var line = rawLine.Trim();
+                if (line.StartsWith('[') && line.EndsWith(']'))
+                {
+                    section = line.ToLowerInvariant();
+                    if (section == "[peer]")
+                    {
+                        currentPeer = new WireGuardPeerSection();
+                        profile.Peers.Add(currentPeer);
+                    }
+                    continue;
+                }
+
+                if (line.StartsWith('#') || !line.Contains('=')) continue;
+
+                var eq  = line.IndexOf('=');
+                var key = line[..eq].Trim();
+                var val = line[(eq + 1)..].Trim();
+                if (string.IsNullOrEmpty(key)) continue;
+
+                if (section == "[interface]")
+                    AssignInterfaceField(profile.Interface, key, val);
+                else if (section == "[peer]" && currentPeer != null)
+                    AssignPeerField(currentPeer, key, val);
+            }
+
+            return profile;
+        }
+
+        private static void AssignInterfaceField(WireGuardInterfaceSection iface, string key, string val)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "privatekey": iface.PrivateKey = val; break;
+                case "address":    iface.Address    = val; break;
+                case "dns":        iface.Dns        = val; break;
+                case "listenport": iface.ListenPort = val; break;
+                case "mtu":        iface.Mtu        = val; break;
+                default:           iface.Extra[key] = val; break;
+            }
+        }
+
+        private static void AssignPeerField(WireGuardPeerSection peer, string key, string val)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "publickey":           peer.PublicKey           = val; break;
+                case "presharedkey":        peer.PresharedKey        = val; break;
+                case "endpoint":            peer.Endpoint            = val; break;
+                case "allowedips":          peer.AllowedIPs          = val; break;
+                case "persistentkeepalive": peer.PersistentKeepalive = val; break;
+                default:                    peer.Extra[key]          = val; break;
+            }
+        }
+
+        /// <summary>Builds .conf text from a structured profile.</summary>
+        public static string Build(WireGuardProfile profile)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("[Interface]");
+            AppendIfSet(sb, "PrivateKey", profile.Interface.PrivateKey);
+            AppendIfSet(sb, "Address", profile.Interface.Address);
+            AppendIfSet(sb, "DNS", profile.Interface.Dns);
+            AppendIfSet(sb, "ListenPort", profile.Interface.ListenPort);
+            AppendIfSet(sb, "MTU", profile.Interface.Mtu);
+            foreach (var kv in profile.Interface.Extra.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+                AppendIfSet(sb, kv.Key, kv.Value);
+
+            foreach (var peer in profile.Peers)
+            {
+                sb.AppendLine();
+                sb.AppendLine("[Peer]");
+                AppendIfSet(sb, "PublicKey", peer.PublicKey);
+                AppendIfSet(sb, "PresharedKey", peer.PresharedKey);
+                AppendIfSet(sb, "Endpoint", peer.Endpoint);
+                AppendIfSet(sb, "AllowedIPs", peer.AllowedIPs);
+                AppendIfSet(sb, "PersistentKeepalive", peer.PersistentKeepalive);
+                foreach (var kv in peer.Extra.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+                    AppendIfSet(sb, kv.Key, kv.Value);
+            }
+
+            return sb.ToString().TrimEnd() + "\n";
+        }
+
+        private static void AppendIfSet(StringBuilder sb, string key, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                sb.AppendLine($"{key} = {value.Trim()}");
+        }
+
+        /// <summary>Returns primary (first) peer endpoint, or null.</summary>
+        public static string? ExtractPrimaryEndpoint(string conf)
+        {
+            var profile = Parse(conf);
+            return profile.Peers.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Endpoint))?.Endpoint;
+        }
+
+        /// <summary>All public keys from [Peer] sections (trimmed, non-empty).</summary>
+        public static IEnumerable<string> ExtractPublicKeys(string conf)
+        {
+            foreach (var peer in Parse(conf).Peers)
+            {
+                if (!string.IsNullOrWhiteSpace(peer.PublicKey))
+                    yield return peer.PublicKey.Trim();
+            }
+        }
+
+        /// <summary>Redacts secret keys from config text.</summary>
+        public static string Sanitize(string conf, bool redactPrivateKey = true, bool redactPresharedKey = true)
+        {
+            if (string.IsNullOrEmpty(conf)) return conf;
+            var lines = conf.Split('\n').ToList();
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var trimmed = lines[i].TrimStart();
+                var eqPos   = trimmed.IndexOf('=');
+                if (eqPos <= 0) continue;
+                var key = trimmed[..eqPos].Trim();
+                if (redactPrivateKey && key.Equals("PrivateKey", StringComparison.OrdinalIgnoreCase))
+                    lines[i] = "PrivateKey = <redacted>";
+                else if (redactPresharedKey && key.Equals("PresharedKey", StringComparison.OrdinalIgnoreCase))
+                    lines[i] = "PresharedKey = <redacted>";
+            }
+            return string.Join('\n', lines);
+        }
+
+        /// <summary>Full config suitable for QR encoding (includes secrets).</summary>
+        public static string ToQrPayload(string conf) => conf.TrimStart('\uFEFF').TrimEnd() + "\n";
     }
 }

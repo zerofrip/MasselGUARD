@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "scenarios": {
+    "C01": {
+      "name": "DirectUDP path drop",
+      "failureClass": "transient_network",
+      "maxRecoveryMs": 120000,
+      "autoRecover": true,
+      "observeMethods": ["tunnel.status", "routeguard.observability.snapshot"]
+    },
+    "C02": {
+      "name": "Phantun process kill",
+      "failureClass": "transport_recoverable",
+      "maxRecoveryMs": 30000,
+      "autoRecover": true,
+      "observeMethods": ["routeguard.observability.snapshot", "events.poll"]
+    },
+    "C03": {
+      "name": "LWO relay task death",
+      "failureClass": "transport_recoverable",
+      "maxRecoveryMs": 30000,
+      "autoRecover": true,
+      "observeMethods": ["routeguard.observability.snapshot"]
+    },
+    "C04": {
+      "name": "Transport exhausted",
+      "failureClass": "transport_fatal",
+      "maxRecoveryMs": null,
+      "autoRecover": false,
+      "observeMethods": ["routeguard.observability.snapshot"]
+    },
+    "C05": {
+      "name": "WFP rule corruption",
+      "failureClass": "network_lock_degraded",
+      "maxRecoveryMs": 60000,
+      "autoRecover": true,
+      "observeMethods": ["networklock.status", "routeguard.observability.snapshot"]
+    },
+    "C06": {
+      "name": "DNS proxy failure",
+      "failureClass": "dns_degraded",
+      "maxRecoveryMs": 10000,
+      "autoRecover": true,
+      "observeMethods": ["routeguard.observability.snapshot"]
+    },
+    "C07": {
+      "name": "Driver unavailable",
+      "failureClass": "driver_degraded",
+      "maxRecoveryMs": 30000,
+      "autoRecover": true,
+      "observeMethods": ["routeguard.status", "routeguard.observability.snapshot"]
+    },
+    "C08": {
+      "name": "Agent restart loop",
+      "failureClass": "agent_recoverable",
+      "maxRecoveryMs": 30000,
+      "autoRecover": true,
+      "observeMethods": ["agent.ping", "networklock.status"]
+    },
+    "C09": {
+      "name": "RouteGuard restart loop",
+      "failureClass": "service_recoverable",
+      "maxRecoveryMs": 30000,
+      "autoRecover": true,
+      "observeMethods": ["routeguard.status", "routeguard.observability.snapshot"]
+    },
+    "C10": {
+      "name": "Network switch stress",
+      "failureClass": "network_churn",
+      "maxRecoveryMs": 120000,
+      "autoRecover": true,
+      "observeMethods": ["wifi.current", "tunnel.status"]
+    },
+    "C11": {
+      "name": "Update mid-apply kill",
+      "failureClass": "update_rollback",
+      "maxRecoveryMs": 300000,
+      "autoRecover": false,
+      "observeMethods": ["telemetry.summary", "agent.ping"]
+    },
+    "C12": {
+      "name": "IPC flood",
+      "failureClass": "dos_resilience",
+      "maxRecoveryMs": 0,
+      "autoRecover": true,
+      "observeMethods": ["agent.ping"]
+    }
+  }
+}

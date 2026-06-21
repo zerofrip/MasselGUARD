@@ -1,0 +1,10 @@
+{
+  "masselguard": {
+    "version": "3.6.0",
+    "codename": "Dangerous Donkey"
+  },
+  "routeguard": {
+    "version": "0.1.0"
+  },
+  "releaseChannel": "dev"
+}

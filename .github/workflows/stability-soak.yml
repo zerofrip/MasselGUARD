@@ -1,0 +1,40 @@
+name: Stability soak
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+jobs:
+  stability-quick:
+    runs-on: [self-hosted, windows, vm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Quick stability matrix (S06, S07, S09)
+        shell: pwsh
+        run: ./tests/scripts/stability_matrix.ps1 -Scenario quick -ReportPath reports/stability
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stability-soak-report
+          path: reports/stability/
+
+  stability-full:
+    runs-on: [self-hosted, windows, vm]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Full stability matrix
+        shell: pwsh
+        run: ./tests/scripts/stability_matrix.ps1 -Scenario all -ReportPath reports/stability-full
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stability-full-report
+          path: reports/stability-full/

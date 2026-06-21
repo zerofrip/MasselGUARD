@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
@@ -55,6 +56,81 @@ namespace MasselGUARD.Services
             }
 
             MigrateInlineConfigsToFiles();
+            MigrateProfileSources();
+            MigrateNetworkLock();
+        }
+
+        private void MigrateNetworkLock()
+        {
+            var nl = Config.NetworkLock;
+            if (nl == null)
+            {
+                Config.NetworkLock = new NetworkLockConfig();
+                return;
+            }
+
+            bool dirty = false;
+            if (nl.Enabled == true && nl.Mode == NetworkLockMode.Disabled)
+            {
+                nl.Mode = NetworkLockMode.Auto;
+                dirty = true;
+            }
+            nl.Enabled = null;
+
+            if (nl.LanExceptions == null!)
+            {
+                nl.LanExceptions = new List<string>();
+                dirty = true;
+            }
+            if (nl.DnsExceptions == null!)
+            {
+                nl.DnsExceptions = new List<string>();
+                dirty = true;
+            }
+            if (string.IsNullOrWhiteSpace(nl.DnsPolicy))
+            {
+                nl.DnsPolicy = "strict";
+                dirty = true;
+            }
+
+            // Legacy global kill-switch mode "always" maps to Auto (per-tunnel triggers still apply).
+            if (string.Equals(Config.KillSwitchMode, "always", StringComparison.OrdinalIgnoreCase)
+                && nl.Mode == NetworkLockMode.Disabled)
+            {
+                nl.Mode = NetworkLockMode.Auto;
+                dirty = true;
+            }
+
+            if (dirty) Save();
+        }
+
+        /// <summary>
+        /// Ensures ProfileSource is set for legacy tunnels loaded without the field.
+        /// </summary>
+        private void MigrateProfileSources()
+        {
+            bool dirty = false;
+            foreach (var t in Config.Tunnels)
+            {
+                // Default enum value Local is fine for local; re-derive when Source implies companion/managed.
+                var expected = ProfileSourceExtensions.FromLegacySource(t.Source, t.ImportedAt);
+                if (t.ProfileSource == ProfileSource.Local && expected != ProfileSource.Local)
+                {
+                    t.ProfileSource = expected;
+                    dirty = true;
+                }
+                else if (t.ProfileSource == default && expected != ProfileSource.Local)
+                {
+                    t.ProfileSource = expected;
+                    dirty = true;
+                }
+                if (t.Tags == null!)
+                {
+                    t.Tags = new List<string>();
+                    dirty = true;
+                }
+            }
+            if (dirty) Save();
         }
 
         /// <summary>

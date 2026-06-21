@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <?include Version.wxi ?>
+
+  <Package Name="MasselGUARD"
+           Manufacturer="Harold Masselink"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="$(var.UpgradeCode)"
+           Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of MasselGUARD is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Feature Id="FeatureCore" Title="MasselGUARD Core" Level="1" Display="expand">
+      <ComponentGroupRef Id="MasselGUARDCoreComponents" />
+      <ComponentGroupRef Id="RouteGuardCoreComponents" />
+      <ComponentGroupRef Id="InstallerCustomActions" />
+      <ComponentRef Id="RegistryInstallPaths" />
+    </Feature>
+
+    <Feature Id="FeatureAWG" Title="AmneziaWG (tunnel.dll)" Level="1">
+      <ComponentGroupRef Id="AwgComponents" />
+    </Feature>
+
+    <Feature Id="FeaturePhantun" Title="Phantun transport" Level="1">
+      <ComponentGroupRef Id="PhantunComponents" />
+    </Feature>
+
+    <Feature Id="FeatureDomainRedirect" Title="DNS callout driver" Level="1">
+      <ComponentGroupRef Id="DriverComponents" />
+    </Feature>
+
+    <CustomActionRef Id="BackupInstallSnapshot" />
+    <CustomActionRef Id="InstallCalloutDriver" />
+    <CustomActionRef Id="UninstallCalloutDriver" />
+    <CustomActionRef Id="RollbackInstall" />
+
+    <InstallExecuteSequence>
+      <Custom Action="BackupInstallSnapshot" Before="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="InstallCalloutDriver" After="InstallFiles" Condition="NOT Installed AND &amp;FeatureDomainRedirect=3" />
+      <Custom Action="UninstallCalloutDriver" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
+      <Custom Action="RollbackInstall" On="Rollback" />
+    </InstallExecuteSequence>
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLDIR" Name="MasselGUARD">
+        <Directory Id="INSTALLERDIR" Name="installer">
+          <Directory Id="CUSTOMACTIONSDIR" Name="custom-actions" />
+        </Directory>
+        <Directory Id="ROUTEGUARDDIR" Name="RouteGuard">
+          <Directory Id="DRIVERDIR" Name="drivers" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Component Id="RegistryInstallPaths" Directory="INSTALLDIR" Guid="*">
+      <RegistryKey Root="HKLM" Key="SOFTWARE\MasselGUARD">
+        <RegistryValue Name="InstallPath" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
+        <RegistryValue Name="Version" Type="string" Value="$(var.ProductVersion)" />
+        <RegistryValue Name="ReleaseChannel" Type="string" Value="$(var.ReleaseChannel)" />
+      </RegistryKey>
+      <RegistryKey Root="HKLM" Key="SOFTWARE\RouteGuard">
+        <RegistryValue Name="InstallPath" Type="string" Value="[ROUTEGUARDDIR]" />
+        <RegistryValue Name="Version" Type="string" Value="$(var.RouteGuardVersion)" />
+      </RegistryKey>
+    </Component>
+  </Package>
+</Wix>

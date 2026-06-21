@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Include>
+  <?define ProductVersion = "3.6.0" ?>
+  <?define RouteGuardVersion = "0.1.0" ?>
+  <?define ProductCodename = "Dangerous Donkey" ?>
+  <?define ReleaseChannel = "dev" ?>
+  <?define UpgradeCode = "A1B2C3D4-E5F6-7890-ABCD-EF1234567890" ?>
+</Include>
